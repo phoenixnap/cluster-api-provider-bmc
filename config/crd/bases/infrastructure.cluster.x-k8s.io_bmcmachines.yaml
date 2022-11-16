@@ -1,0 +1,204 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.9.0
+  creationTimestamp: null
+  name: bmcmachines.infrastructure.cluster.x-k8s.io
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    kind: BMCMachine
+    listKind: BMCMachineList
+    plural: bmcmachines
+    singular: bmcmachine
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.ready
+      name: Ready
+      type: string
+    - jsonPath: .status.status
+      name: Status
+      type: string
+    - jsonPath: .status.publicIpAddresses[0]
+      name: Address
+      type: string
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: BMCMachine is the Schema for the bmcmachines API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: BMCMachineSpec defines the desired state of BMCMachine
+            properties:
+              description:
+                description: Description of server.
+                maxLength: 250
+                type: string
+              installDefaultSshKeys:
+                description: Whether or not to install SSH Keys marked as default
+                  in additionl to any SSH keys speficied on this resource. Defaults
+                  to true.
+                type: boolean
+              location:
+                description: Location ID where the server is created.
+                enum:
+                - PHX
+                - ASH
+                - SGP
+                - NLD
+                type: string
+              networkType:
+                description: The type of networks where this server should be attached.
+                enum:
+                - PUBLIC_AND_PRIVATE
+                - PRIVATE_ONLY
+                type: string
+              os:
+                description: OS ID used for server creation.
+                enum:
+                - ubuntu/bionic
+                - ubuntu/focal
+                type: string
+              providerID:
+                description: To be set after the BMC server is created. Required by
+                  the cluster API machine controller.
+                type: string
+              sshKeyIds:
+                description: A list of SSH key IDs (BMC resource ID) that will be
+                  installed on the server in addition default SSH keys if enabled.
+                items:
+                  type: string
+                type: array
+              type:
+                description: Server type used for creation.
+                enum:
+                - s0.d1.small
+                - s0.d1.medium
+                - s1.c1.small
+                - s1.c1.medium
+                - s1.c2.medium
+                - s1.c2.large
+                - s1.e1.small
+                - s1.e1.medium
+                - s1.e1.large
+                - s2.c1.small
+                - s2.c1.medium
+                - s2.c1.large
+                - s2.c2.small
+                - s2.c2.medium
+                - s2.c2.large
+                - d2.c1.medium
+                - d2.c2.medium
+                - d2.c3.medium
+                - d2.c4.medium
+                - d2.c5.medium
+                - d2.c1.large
+                - d2.c2.large
+                - d2.c3.large
+                - d2.c4.large
+                - d2.c4.storage.pliops1
+                - d2.c5.large
+                - d2.m1.medium
+                - d2.m1.large
+                - d2.m2.medium
+                - d2.m2.large
+                - d2.m2.xlarge
+                - d1.c1.small
+                - d1.c2.small
+                - d1.c3.small
+                - d1.c4.small
+                - d1.c1.medium
+                - d1.c2.medium
+                - d1.c3.medium
+                - d1.c4.medium
+                - d1.c1.large
+                - d1.c2.large
+                - d1.c3.large
+                - d1.c4.large
+                - d1.m1.medium
+                - d1.m2.medium
+                - d1.m3.medium
+                - d1.m4.medium
+                type: string
+            required:
+            - installDefaultSshKeys
+            type: object
+          status:
+            description: ServerStatus defines the observed state of Server
+            properties:
+              addresses:
+                items:
+                  description: NodeAddress contains information for the node's address.
+                  properties:
+                    address:
+                      description: The node address.
+                      type: string
+                    type:
+                      description: Node address type, one of Hostname, ExternalIP
+                        or InternalIP.
+                      type: string
+                  required:
+                  - address
+                  - type
+                  type: object
+                type: array
+              coresPerCpu:
+                format: int32
+                type: integer
+              cpu:
+                type: string
+              cpuCount:
+                format: int32
+                type: integer
+              cpuFrequency:
+                anyOf:
+                - type: integer
+                - type: string
+                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                x-kubernetes-int-or-string: true
+              failureMessage:
+                type: string
+              failureReason:
+                description: MachineStatusError defines errors states for Machine
+                  objects.
+                type: string
+              id:
+                type: string
+              privateIpAddresses:
+                items:
+                  type: string
+                type: array
+              publicIpAddresses:
+                items:
+                  type: string
+                type: array
+              ram:
+                type: string
+              ready:
+                description: Cluster API fields
+                type: boolean
+              status:
+                type: string
+              storage:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

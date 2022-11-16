@@ -1,0 +1,172 @@
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: BMCCluster
+    name: "${CLUSTER_NAME}"
+  controlPlaneRef:
+    kind: KubeadmControlPlane
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    name: "${CLUSTER_NAME}-control-plane"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: BMCCluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  location: "${BMC_LOCATION}"
+---
+kind: KubeadmControlPlane
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  replicas: 1
+  machineTemplate:
+    infrastructureRef:
+      kind: BMCMachineTemplate
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      name: "${CLUSTER_NAME}-control-plane"
+  kubeadmConfigSpec:
+    preKubeadmCommands:
+    - echo "preKubeadmCommands run"
+    - sudo apt-get -y update && sudo apt-get -y install curl
+    - wget https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz
+    - tar Cxzvf /usr/local containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz
+    - rm containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz
+    - wget -P /etc/systemd/system https://raw.githubusercontent.com/containerd/containerd/main/containerd.service
+    - systemctl daemon-reload
+    - systemctl enable --now containerd
+    - wget https://github.com/kubernetes-sigs/cri-tools/releases/download/v${CRI_VERSION}/crictl-v${CRI_VERSION}-linux-amd64.tar.gz
+    - sudo tar zxvf crictl-v${CRI_VERSION}-linux-amd64.tar.gz -C /usr/local/bin
+    - rm -f crictl-v${CRI_VERSION}-linux-amd64.tar.gz
+    - wget https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.amd64
+    - install -m 755 runc.amd64 /usr/local/sbin/runc
+    - mkdir -p /opt/cni/bin
+    - wget https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/cni-plugins-linux-amd64-v${CNI_VERSION}.tgz
+    - tar Cxzvf /opt/cni/bin cni-plugins-linux-amd64-v${CNI_VERSION}.tgz
+    - rm cni-plugins-linux-amd64-v${CNI_VERSION}.tgz
+    - sudo apt-get -y update
+    - modprobe overlay
+    - modprobe br_netfilter
+    - echo -e "overlay \nbr_netfilter" | sudo tee /etc/modules-load.d/kubernetes.conf
+    - mkdir -p /proc/sys/net/bridge
+    - echo 1 | sudo tee /proc/sys/net/bridge/bridge-nf-call-iptables /proc/sys/net/bridge/bridge-nf-call-ip6tables /proc/sys/net/ipv4/ip_forward /proc/sys/net/ipv6/conf/all/forwarding /proc/sys/vm/overcommit_memory /proc/sys/kernel/panic_on_oops /proc/sys/net/ipv4/conf/all/rp_filter
+    - echo 0 | sudo tee /proc/sys/net/ipv6/conf/all/disable_ipv6
+    - echo 10 | sudo tee /proc/sys/kernel/panic
+    - curl -sS https://packages.cloud.google.com/apt/doc/apt-key.gpg -o key
+    - sudo apt-key add key
+    - sudo rm key
+    - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+    - sudo apt-get -y update
+    - sudo apt-get install -y kubelet=${KUBERNETES_VERSION}-00 kubeadm=${KUBERNETES_VERSION}-00 kubectl=${KUBERNETES_VERSION}-00
+    - sudo apt-get -y update
+    - sudo swapoff -a
+    - echo "preKubeadmCommands finished"
+    initConfiguration:
+      nodeRegistration:
+        name: '{{ ds.meta_data["local_hostname"] }}'
+    joinConfiguration:
+      nodeRegistration:
+        name: '{{ ds.meta_data["local_hostname"] }}'
+  version: "${KUBERNETES_VERSION}"
+---
+kind: BMCMachineTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  template:
+    spec:
+      location: "${BMC_LOCATION}"
+      os: "ubuntu/focal"
+      type: "${BMC_CONTROL_PLANE_MACHINE_TYPE}"
+      installDefaultSshKeys: true
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels:
+  template:
+    spec:
+      clusterName: "${CLUSTER_NAME}"
+      version: "${KUBERNETES_VERSION}"
+      bootstrap:
+        configRef:
+          name: "${CLUSTER_NAME}-md-0"
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+      infrastructureRef:
+        name: "${CLUSTER_NAME}-md-0"
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: BMCMachineTemplate
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: BMCMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      location: "${BMC_LOCATION}"
+      os: "ubuntu/focal"
+      type: "${BMC_NODE_TYPE}"
+      installDefaultSshKeys: true
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      preKubeadmCommands:
+      - echo "preKubeadmCommands run"
+      - sudo apt-get -y update && sudo apt-get -y install curl
+      - wget https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz
+      - tar Cxzvf /usr/local containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz
+      - rm containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz
+      - wget -P /etc/systemd/system https://raw.githubusercontent.com/containerd/containerd/main/containerd.service
+      - systemctl daemon-reload
+      - systemctl enable --now containerd
+      - wget https://github.com/kubernetes-sigs/cri-tools/releases/download/v${CRI_VERSION}/crictl-v${CRI_VERSION}-linux-amd64.tar.gz
+      - sudo tar zxvf crictl-v${CRI_VERSION}-linux-amd64.tar.gz -C /usr/local/bin
+      - rm -f crictl-v${CRI_VERSION}-linux-amd64.tar.gz
+      - wget https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.amd64
+      - install -m 755 runc.amd64 /usr/local/sbin/runc
+      - mkdir -p /opt/cni/bin
+      - wget https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/cni-plugins-linux-amd64-v${CNI_VERSION}.tgz
+      - tar Cxzvf /opt/cni/bin cni-plugins-linux-amd64-v${CNI_VERSION}.tgz
+      - rm cni-plugins-linux-amd64-v${CNI_VERSION}.tgz
+      - sudo apt-get -y update
+      - modprobe overlay
+      - modprobe br_netfilter
+      - echo -e "overlay \nbr_netfilter" | sudo tee /etc/modules-load.d/kubernetes.conf
+      - mkdir -p /proc/sys/net/bridge
+      - echo 1 | sudo tee /proc/sys/net/bridge/bridge-nf-call-iptables /proc/sys/net/bridge/bridge-nf-call-ip6tables /proc/sys/net/ipv4/ip_forward /proc/sys/net/ipv6/conf/all/forwarding /proc/sys/vm/overcommit_memory /proc/sys/kernel/panic_on_oops /proc/sys/net/ipv4/conf/all/rp_filter
+      - echo 0 | sudo tee /proc/sys/net/ipv6/conf/all/disable_ipv6
+      - echo 10 | sudo tee /proc/sys/kernel/panic
+      - curl -sS https://packages.cloud.google.com/apt/doc/apt-key.gpg -o key
+      - sudo apt-key add key
+      - sudo rm key
+      - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+      - sudo apt-get -y update
+      - sudo apt-get install -y kubelet=${KUBERNETES_VERSION}-00 kubeadm=${KUBERNETES_VERSION}-00 kubectl=${KUBERNETES_VERSION}-00
+      - sudo apt-get -y update
+      - sudo swapoff -a
+      - echo "preKubeadmCommands finished"
+      joinConfiguration:
+        nodeRegistration:
+          name: '{{ ds.meta_data.local_hostname }}'

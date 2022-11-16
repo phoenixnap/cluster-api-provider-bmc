@@ -1,0 +1,173 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.9.0
+  creationTimestamp: null
+  name: bmcmachinetemplates.infrastructure.cluster.x-k8s.io
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    kind: BMCMachineTemplate
+    listKind: BMCMachineTemplateList
+    plural: bmcmachinetemplates
+    singular: bmcmachinetemplate
+  scope: Namespaced
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: BMCMachineTemplate is the Schema for the bmcmachinetemplates
+          API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: BMCMachineTemplateSpec defines the desired state of BMCMachineTemplate
+            properties:
+              template:
+                description: BMCMachineTemplateResource describes the data needed
+                  to create am BMCMachine from a template.
+                properties:
+                  metadata:
+                    description: 'Standard object''s metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata'
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: 'Annotations is an unstructured key value map
+                          stored with a resource that may be set by external tools
+                          to store and retrieve arbitrary metadata. They are not queryable
+                          and should be preserved when modifying objects. More info:
+                          http://kubernetes.io/docs/user-guide/annotations'
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: 'Map of string keys and values that can be used
+                          to organize and categorize (scope and select) objects. May
+                          match selectors of replication controllers and services.
+                          More info: http://kubernetes.io/docs/user-guide/labels'
+                        type: object
+                    type: object
+                  spec:
+                    description: Spec is the specification of the desired behavior
+                      of the machine.
+                    properties:
+                      description:
+                        description: Description of server.
+                        maxLength: 250
+                        type: string
+                      installDefaultSshKeys:
+                        description: Whether or not to install SSH Keys marked as
+                          default in additionl to any SSH keys speficied on this resource.
+                          Defaults to true.
+                        type: boolean
+                      location:
+                        description: Location ID where the server is created.
+                        enum:
+                        - PHX
+                        - ASH
+                        - SGP
+                        - NLD
+                        type: string
+                      networkType:
+                        description: The type of networks where this server should
+                          be attached.
+                        enum:
+                        - PUBLIC_AND_PRIVATE
+                        - PRIVATE_ONLY
+                        type: string
+                      os:
+                        description: OS ID used for server creation.
+                        enum:
+                        - ubuntu/bionic
+                        - ubuntu/focal
+                        type: string
+                      providerID:
+                        description: To be set after the BMC server is created. Required
+                          by the cluster API machine controller.
+                        type: string
+                      sshKeyIds:
+                        description: A list of SSH key IDs (BMC resource ID) that
+                          will be installed on the server in addition default SSH
+                          keys if enabled.
+                        items:
+                          type: string
+                        type: array
+                      type:
+                        description: Server type used for creation.
+                        enum:
+                        - s0.d1.small
+                        - s0.d1.medium
+                        - s1.c1.small
+                        - s1.c1.medium
+                        - s1.c2.medium
+                        - s1.c2.large
+                        - s1.e1.small
+                        - s1.e1.medium
+                        - s1.e1.large
+                        - s2.c1.small
+                        - s2.c1.medium
+                        - s2.c1.large
+                        - s2.c2.small
+                        - s2.c2.medium
+                        - s2.c2.large
+                        - d2.c1.medium
+                        - d2.c2.medium
+                        - d2.c3.medium
+                        - d2.c4.medium
+                        - d2.c5.medium
+                        - d2.c1.large
+                        - d2.c2.large
+                        - d2.c3.large
+                        - d2.c4.large
+                        - d2.c4.storage.pliops1
+                        - d2.c5.large
+                        - d2.m1.medium
+                        - d2.m1.large
+                        - d2.m2.medium
+                        - d2.m2.large
+                        - d2.m2.xlarge
+                        - d1.c1.small
+                        - d1.c2.small
+                        - d1.c3.small
+                        - d1.c4.small
+                        - d1.c1.medium
+                        - d1.c2.medium
+                        - d1.c3.medium
+                        - d1.c4.medium
+                        - d1.c1.large
+                        - d1.c2.large
+                        - d1.c3.large
+                        - d1.c4.large
+                        - d1.m1.medium
+                        - d1.m2.medium
+                        - d1.m3.medium
+                        - d1.m4.medium
+                        type: string
+                    required:
+                    - installDefaultSshKeys
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
