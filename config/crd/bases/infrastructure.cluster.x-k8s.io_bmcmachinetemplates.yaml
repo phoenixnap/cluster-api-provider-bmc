@@ -88,12 +88,14 @@ spec:
                         enum:
                         - PUBLIC_AND_PRIVATE
                         - PRIVATE_ONLY
+                        - USER_DEFINED
                         type: string
                       os:
                         description: OS ID used for server creation.
                         enum:
                         - ubuntu/bionic
                         - ubuntu/focal
+                        - ubuntu/jammy
                         type: string
                       providerID:
                         description: To be set after the BMC server is created. Required

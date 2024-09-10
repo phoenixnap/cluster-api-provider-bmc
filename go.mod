@@ -1,4 +1,4 @@
-module github.com/phoenixnap/cluster-api-provider-bmc
+module github.com/pnap/cluster-api-provider-bmc
 
 go 1.18
 
@@ -77,6 +77,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0 // indirect
 	k8s.io/apiextensions-apiserver v0.24.2 // indirect
+	k8s.io/cluster-bootstrap v0.24.0 // indirect
 	k8s.io/component-base v0.24.2 // indirect
 	k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42 // indirect
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9 // indirect

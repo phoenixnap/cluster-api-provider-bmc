@@ -42,8 +42,8 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/record"
 
-	bmcv1 "github.com/phoenixnap/cluster-api-provider-bmc/api/v1beta1"
-	controllers "github.com/phoenixnap/cluster-api-provider-bmc/controllers"
+	bmcv1 "github.com/pnap/cluster-api-provider-bmc/api/v1beta1"
+	controllers "github.com/pnap/cluster-api-provider-bmc/controllers"
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )

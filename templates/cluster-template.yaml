@@ -61,12 +61,10 @@ spec:
     - echo 1 | sudo tee /proc/sys/net/bridge/bridge-nf-call-iptables /proc/sys/net/bridge/bridge-nf-call-ip6tables /proc/sys/net/ipv4/ip_forward /proc/sys/net/ipv6/conf/all/forwarding /proc/sys/vm/overcommit_memory /proc/sys/kernel/panic_on_oops /proc/sys/net/ipv4/conf/all/rp_filter
     - echo 0 | sudo tee /proc/sys/net/ipv6/conf/all/disable_ipv6
     - echo 10 | sudo tee /proc/sys/kernel/panic
-    - curl -sS https://packages.cloud.google.com/apt/doc/apt-key.gpg -o key
-    - sudo apt-key add key
-    - sudo rm key
-    - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+    - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${KUBERNETES_VERSION}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
     - sudo apt-get -y update
-    - sudo apt-get install -y kubelet=${KUBERNETES_VERSION}-00 kubeadm=${KUBERNETES_VERSION}-00 kubectl=${KUBERNETES_VERSION}-00
+    - sudo apt-get install -y kubelet kubeadm kubectl
     - sudo apt-get -y update
     - sudo swapoff -a
     - echo "preKubeadmCommands finished"
@@ -86,7 +84,7 @@ spec:
   template:
     spec:
       location: "${BMC_LOCATION}"
-      os: "ubuntu/focal"
+      os: "ubuntu/jammy"
       type: "${BMC_CONTROL_PLANE_MACHINE_TYPE}"
       installDefaultSshKeys: true
 ---
@@ -121,7 +119,7 @@ spec:
   template:
     spec:
       location: "${BMC_LOCATION}"
-      os: "ubuntu/focal"
+      os: "ubuntu/jammy"
       type: "${BMC_NODE_TYPE}"
       installDefaultSshKeys: true
 ---
@@ -158,12 +156,10 @@ spec:
       - echo 1 | sudo tee /proc/sys/net/bridge/bridge-nf-call-iptables /proc/sys/net/bridge/bridge-nf-call-ip6tables /proc/sys/net/ipv4/ip_forward /proc/sys/net/ipv6/conf/all/forwarding /proc/sys/vm/overcommit_memory /proc/sys/kernel/panic_on_oops /proc/sys/net/ipv4/conf/all/rp_filter
       - echo 0 | sudo tee /proc/sys/net/ipv6/conf/all/disable_ipv6
       - echo 10 | sudo tee /proc/sys/kernel/panic
-      - curl -sS https://packages.cloud.google.com/apt/doc/apt-key.gpg -o key
-      - sudo apt-key add key
-      - sudo rm key
-      - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+      - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${KUBERNETES_VERSION}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
       - sudo apt-get -y update
-      - sudo apt-get install -y kubelet=${KUBERNETES_VERSION}-00 kubeadm=${KUBERNETES_VERSION}-00 kubectl=${KUBERNETES_VERSION}-00
+      - sudo apt-get install -y kubelet kubeadm kubectl
       - sudo apt-get -y update
       - sudo swapoff -a
       - echo "preKubeadmCommands finished"
