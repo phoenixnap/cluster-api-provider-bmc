@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.9.0
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: bmcmachines.infrastructure.cluster.x-k8s.io
 spec:
   group: infrastructure.cluster.x-k8s.io
@@ -31,14 +30,19 @@ spec:
         description: BMCMachine is the Schema for the bmcmachines API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -50,9 +54,9 @@ spec:
                 maxLength: 250
                 type: string
               installDefaultSshKeys:
-                description: Whether or not to install SSH Keys marked as default
-                  in additionl to any SSH keys speficied on this resource. Defaults
-                  to true.
+                description: |-
+                  Whether or not to install SSH Keys marked as default in additionl to any SSH keys speficied on this resource.
+                  Defaults to true.
                 type: boolean
               location:
                 description: Location ID where the server is created.
@@ -73,10 +77,12 @@ spec:
                 enum:
                 - ubuntu/bionic
                 - ubuntu/focal
+                - ubuntu/jammy
                 type: string
               providerID:
-                description: To be set after the BMC server is created. Required by
-                  the cluster API machine controller.
+                description: |-
+                  To be set after the BMC server is created.
+                  Required by the cluster API machine controller.
                 type: string
               sshKeyIds:
                 description: A list of SSH key IDs (BMC resource ID) that will be
@@ -137,6 +143,9 @@ spec:
                 type: string
             required:
             - installDefaultSshKeys
+            - location
+            - os
+            - type
             type: object
           status:
             description: ServerStatus defines the observed state of Server

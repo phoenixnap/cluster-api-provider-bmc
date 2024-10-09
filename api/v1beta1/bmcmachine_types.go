@@ -92,12 +92,13 @@ const (
 // ServerOS describes the operating system image for this server.
 // Only one of the following server OSs may be specified.
 // If none of the following OSs are specified, the default one is UbuntuBionic.
-// +kubebuilder:validation:Enum=ubuntu/bionic;ubuntu/focal
+// +kubebuilder:validation:Enum=ubuntu/bionic;ubuntu/focal;ubuntu/jammy
 type ServerOS string
 
 const (
 	UbuntuBionic ServerOS = `ubuntu/bionic`
 	UbuntuFocal  ServerOS = `ubuntu/focal`
+	UbuntuJammy  ServerOS = `ubuntu/jammy`
 )
 
 // ServerType describes the hardware to allocate for this server.
