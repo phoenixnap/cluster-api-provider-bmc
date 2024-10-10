@@ -121,52 +121,52 @@ func (mc *MachineContext) SetBMCStatus(s string) {
 	mc.BMCMachine.Status.BMCStatus = string(s)
 }
 func (mc *MachineContext) SetNodeRef(ctx context.Context, cl client.Client) {
-
-	clusterKey := types.NamespacedName{
-		Namespace: mc.Cluster.Namespace,
-		Name:      mc.Cluster.Name,
-	}
-
-	remoteClient, err := GetRemoteClient(ctx, cl, clusterKey)
-	if err != nil {
-		mc.Eventf(`Normal`, "FailureNodeRef", "Getting remote client failed. %s", fmt.Sprintln(err))
-		return
-	}
-	// Retrieve the remote node
-	nodeName := mc.Machine.Name
-	node := &corev1.Node{}
-	nodeKey := types.NamespacedName{
-		Namespace: "",
-		Name:      nodeName,
-	}
-	if err := remoteClient.Get(ctx, nodeKey, node); err != nil {
-		mc.Eventf(`Normal`, "FailureNodeRef", "Getting node failed.: %s", fmt.Sprintln(err))
-		return
-	}
-
 	if mc.BMCMachine.Status.NodeRef == nil {
-		mc.BMCMachine.Status.NodeRef = &corev1.ObjectReference{
-			APIVersion: corev1.SchemeGroupVersion.String(),
-			Kind:       "Node",
-			Name:       node.Name,
-			UID:        node.UID,
+		clusterKey := types.NamespacedName{
+			Namespace: mc.Cluster.Namespace,
+			Name:      mc.Cluster.Name,
 		}
-		//log.Info("Infrastructure provider reporting spec.providerID, Kubernetes node is now available", machine.Spec.InfrastructureRef.Kind, klog.KRef(machine.Spec.InfrastructureRef.Namespace, machine.Spec.InfrastructureRef.Name), "providerID", *machine.Spec.ProviderID, "Node", klog.KRef("", machine.Status.NodeRef.Name))
-		//r.recorder.Event(machine, corev1.EventTypeNormal, "SuccessfulSetNodeRef", machine.Status.NodeRef.Name)
-		mc.Event(`Normal`, "SuccessNodeRef", mc.BMCMachine.Status.NodeRef.Name)
-	}
-	// Update the node's Spec.ProviderID
-	patchHelper, err := patch.NewHelper(node, remoteClient)
-	if err != nil {
-		mc.Eventf(`Normal`, "FailureNodeRef", "failed to create patchHelper for the workload cluster node %s", fmt.Sprintln(err))
-		return
-	}
 
-	node.Spec.ProviderID = *mc.BMCMachine.Spec.ProviderID
-	err = patchHelper.Patch(ctx, node)
-	if err != nil {
-		mc.Eventf(`Normal`, "FailureNodeRef", "failed to patch the remote workload cluster node %s", fmt.Sprintln(err))
-		return
+		remoteClient, err := GetRemoteClient(ctx, cl, clusterKey)
+		if err != nil {
+			mc.Eventf(`Warning`, "FailureNodeRef", "Getting remote client failed. %s", fmt.Sprintln(err))
+			return
+		}
+		// Retrieve the remote node
+		nodeName := mc.GetHostname()
+		node := &corev1.Node{}
+		nodeKey := types.NamespacedName{
+			Namespace: "",
+			Name:      nodeName,
+		}
+		if err := remoteClient.Get(ctx, nodeKey, node); err != nil {
+			mc.Eventf(`Warning`, "FailureNodeRef", "Getting node failed. %s", fmt.Sprintln(err))
+			return
+		}
+
+		if mc.BMCMachine.Status.NodeRef == nil {
+			mc.BMCMachine.Status.NodeRef = &corev1.ObjectReference{
+				APIVersion: corev1.SchemeGroupVersion.String(),
+				Kind:       "Node",
+				Name:       node.Name,
+				UID:        node.UID,
+			}
+
+			mc.Event(`Normal`, "SuccessNodeRef", "Succesfully set node ref "+mc.BMCMachine.Status.NodeRef.Name)
+		}
+		// Update the node's Spec.ProviderID
+		patchHelper, err := patch.NewHelper(node, remoteClient)
+		if err != nil {
+			mc.Eventf(`Warning`, "FailureNodeRef", "failed to create patchHelper for the workload cluster node %s", fmt.Sprintln(err))
+			return
+		}
+
+		node.Spec.ProviderID = *mc.BMCMachine.Spec.ProviderID
+		err = patchHelper.Patch(ctx, node)
+		if err != nil {
+			mc.Eventf(`Warning`, "FailureNodeRef", "failed to patch the remote workload cluster node %s", fmt.Sprintln(err))
+			return
+		}
 	}
 }
 

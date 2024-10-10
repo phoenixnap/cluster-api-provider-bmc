@@ -61,12 +61,17 @@ spec:
     - echo 1 | sudo tee /proc/sys/net/bridge/bridge-nf-call-iptables /proc/sys/net/bridge/bridge-nf-call-ip6tables /proc/sys/net/ipv4/ip_forward /proc/sys/net/ipv6/conf/all/forwarding /proc/sys/vm/overcommit_memory /proc/sys/kernel/panic_on_oops /proc/sys/net/ipv4/conf/all/rp_filter
     - echo 0 | sudo tee /proc/sys/net/ipv6/conf/all/disable_ipv6
     - echo 10 | sudo tee /proc/sys/kernel/panic
-    - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${KUBERNETES_VERSION}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+    - curl -fsSL https://pkgs.k8s.io/core:/stable:/v${KUBERNETES_VERSION%.*}/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${KUBERNETES_VERSION%.*}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
     - sudo apt-get -y update
     - sudo apt-get install -y kubelet kubeadm kubectl
     - sudo apt-get -y update
     - sudo swapoff -a
+    - sudo mkdir /etc/containerd
+    - sudo containerd config default | sudo tee /etc/containerd/config.toml
+    - sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+    - service containerd restart
+    - service kubelet restart
     - echo "preKubeadmCommands finished"
     initConfiguration:
       nodeRegistration:
@@ -156,12 +161,17 @@ spec:
       - echo 1 | sudo tee /proc/sys/net/bridge/bridge-nf-call-iptables /proc/sys/net/bridge/bridge-nf-call-ip6tables /proc/sys/net/ipv4/ip_forward /proc/sys/net/ipv6/conf/all/forwarding /proc/sys/vm/overcommit_memory /proc/sys/kernel/panic_on_oops /proc/sys/net/ipv4/conf/all/rp_filter
       - echo 0 | sudo tee /proc/sys/net/ipv6/conf/all/disable_ipv6
       - echo 10 | sudo tee /proc/sys/kernel/panic
-      - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-      - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${KUBERNETES_VERSION}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+      - curl -fsSL https://pkgs.k8s.io/core:/stable:/v${KUBERNETES_VERSION%.*}/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${KUBERNETES_VERSION%.*}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
       - sudo apt-get -y update
       - sudo apt-get install -y kubelet kubeadm kubectl
       - sudo apt-get -y update
       - sudo swapoff -a
+      - sudo mkdir /etc/containerd
+      - sudo containerd config default | sudo tee /etc/containerd/config.toml
+      - sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+      - service containerd restart
+      - service kubelet restart
       - echo "preKubeadmCommands finished"
       joinConfiguration:
         nodeRegistration:

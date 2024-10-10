@@ -413,7 +413,7 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 		case StatusPoweredOn:
 			{
 				mc.SetReady()
-				mc.SetNodeRef(ctx, r.Client)
+				//mc.SetNodeRef(ctx, r.Client)
 			}
 		case StatusError:
 			mc.SetIrreconcilable(capierrors.CreateMachineError, `unrecoverable error while creating the resource at BMC`)
@@ -427,7 +427,10 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 	// Poll timing based on status and expected change
 	switch ss.BMCStatus {
 	case StatusPoweredOn:
-		return requeueAfter2Min, nil
+		{
+			mc.SetNodeRef(ctx, r.Client)
+			return requeueAfter2Min, nil
+		}
 	case StatusError:
 		return noRequeue, nil
 	default:
