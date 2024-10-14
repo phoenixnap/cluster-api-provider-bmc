@@ -18,6 +18,7 @@ import (
 
 	bmcv1 "github.com/phoenixnap/cluster-api-provider-bmc/api/v1beta1"
 	"github.com/pkg/errors"
+	"sigs.k8s.io/cluster-api/controllers/remote"
 )
 
 type MachineContext struct {
@@ -119,6 +120,55 @@ func (mc *MachineContext) MergeBMCStatusProperties(s bmcv1.BMCMachineStatus) {
 func (mc *MachineContext) SetBMCStatus(s string) {
 	mc.BMCMachine.Status.BMCStatus = string(s)
 }
+func (mc *MachineContext) SetNodeRef(ctx context.Context, cl client.Client) {
+	if mc.BMCMachine.Status.NodeRef == nil {
+		clusterKey := types.NamespacedName{
+			Namespace: mc.Cluster.Namespace,
+			Name:      mc.Cluster.Name,
+		}
+
+		remoteClient, err := GetRemoteClient(ctx, cl, clusterKey)
+		if err != nil {
+			mc.Eventf(`Warning`, "FailureNodeRef", "Getting remote client failed. %s", fmt.Sprintln(err))
+			return
+		}
+		// Retrieve the remote node
+		nodeName := mc.GetHostname()
+		node := &corev1.Node{}
+		nodeKey := types.NamespacedName{
+			Namespace: "",
+			Name:      nodeName,
+		}
+		if err := remoteClient.Get(ctx, nodeKey, node); err != nil {
+			mc.Eventf(`Warning`, "FailureNodeRef", "Getting node failed. %s", fmt.Sprintln(err))
+			return
+		}
+
+		if mc.BMCMachine.Status.NodeRef == nil {
+			mc.BMCMachine.Status.NodeRef = &corev1.ObjectReference{
+				APIVersion: corev1.SchemeGroupVersion.String(),
+				Kind:       "Node",
+				Name:       node.Name,
+				UID:        node.UID,
+			}
+
+			mc.Event(`Normal`, "SuccessNodeRef", "Succesfully set node ref "+mc.BMCMachine.Status.NodeRef.Name)
+		}
+		// Update the node's Spec.ProviderID
+		patchHelper, err := patch.NewHelper(node, remoteClient)
+		if err != nil {
+			mc.Eventf(`Warning`, "FailureNodeRef", "failed to create patchHelper for the workload cluster node %s", fmt.Sprintln(err))
+			return
+		}
+
+		node.Spec.ProviderID = *mc.BMCMachine.Spec.ProviderID
+		err = patchHelper.Patch(ctx, node)
+		if err != nil {
+			mc.Eventf(`Warning`, "FailureNodeRef", "failed to patch the remote workload cluster node %s", fmt.Sprintln(err))
+			return
+		}
+	}
+}
 
 func (mc *MachineContext) GetBMCStatus() string {
 	return mc.BMCMachine.Status.BMCStatus
@@ -209,6 +259,10 @@ func (cc *ClusterContext) SetIP(ip string) {
 	cc.BMCCluster.Annotations[ANNOTATION_NAME_BMC_CLUSTER_IP] = ip
 }
 
+func (cc *ClusterContext) GetIP() string {
+	return cc.BMCCluster.Annotations[ANNOTATION_NAME_BMC_CLUSTER_IP]
+}
+
 func (cc ClusterContext) Event(eventtype, reason, message string) {
 	cc.Recorder.Event(cc.BMCCluster, eventtype, reason, message)
 }
@@ -245,4 +299,14 @@ func (cc *ClusterContext) SetReady() {
 
 func (cc *ClusterContext) IsReady() bool {
 	return cc.BMCCluster.Status.Ready
+}
+
+func GetRemoteClient(ctx context.Context, client client.Client, clusterKey client.ObjectKey) (client.Client, error) {
+
+	remoteClient, err := remote.NewClusterClient(ctx, "remote-cluster-cache", client, clusterKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return remoteClient, nil
 }

@@ -249,12 +249,13 @@ func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineC
 		request.NetworkConfiguration = NetworkConfiguration{
 			IPBlocksConfiguration: IPBlocksConfiguration{
 				ConfigurationType: `USER_DEFINED`,
-				IPBlocks:          []IPBlock{IPBlock{ID: ipid}},
+				IPBlocks:          []IPBlock{{ID: ipid}},
 			},
 		}
 	}
 
 	createBody, err := json.Marshal(request)
+
 	if err != nil {
 		return noRequeue, err
 	}
@@ -408,7 +409,9 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 		mc.MergeBMCStatusProperties(ss)
 		switch mc.GetBMCStatus() {
 		case StatusPoweredOn:
-			mc.SetReady()
+			{
+				mc.SetReady()
+			}
 		case StatusError:
 			mc.SetIrreconcilable(capierrors.CreateMachineError, `unrecoverable error while creating the resource at BMC`)
 		}
@@ -421,7 +424,10 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 	// Poll timing based on status and expected change
 	switch ss.BMCStatus {
 	case StatusPoweredOn:
-		return requeueAfter2Min, nil
+		{
+			mc.SetNodeRef(ctx, r.Client)
+			return requeueAfter2Min, nil
+		}
 	case StatusError:
 		return noRequeue, nil
 	default:
@@ -523,7 +529,7 @@ type NetworkConfiguration struct {
 // IPBlocksConfiguration configurations of server
 type IPBlocksConfiguration struct {
 	ConfigurationType string    `json:"configurationType,omitempty"`
-	IPBlocks          []IPBlock `json:"ipBlocks"`
+	IPBlocks          []IPBlock `json:"ipBlocks,omitempty"`
 }
 
 // IPBlock configurations of server
