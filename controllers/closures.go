@@ -16,8 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	bmcv1 "github.com/phoenixnap/cluster-api-provider-bmc/api/v1beta1"
 	"github.com/pkg/errors"
-	bmcv1 "github.com/pnap/cluster-api-provider-bmc/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 )
 

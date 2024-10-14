@@ -1,4 +1,4 @@
-module github.com/pnap/cluster-api-provider-bmc
+module github.com/phoenixnap/cluster-api-provider-bmc
 
 go 1.18
 

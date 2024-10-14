@@ -3,5 +3,5 @@ providers:
   - name: "bmc"
     # For local testing change ${PWD} to current working directory
     #url: "file://${PWD}/infrastructure-bmc/v0.0.1/infrastructure-components.yaml"
-    url: "https://github.com/pnap/cluster-api-provider-bmc/releases/latest/infrastructure-components.yaml"
+    url: "https://github.com/phoenixnap/cluster-api-provider-bmc/releases/latest/infrastructure-components.yaml"
     type: "InfrastructureProvider"

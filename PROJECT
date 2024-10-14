@@ -2,7 +2,7 @@ domain: cluster.x-k8s.io
 layout:
 - go.kubebuilder.io/v3
 projectName: cluster-api-provider-bmc
-repo: github.com/pnap/k8s-bmc
+repo: github.com/phoenixnap/k8s-bmc
 resources:
 - api:
     crdVersion: v1
@@ -11,7 +11,7 @@ resources:
   domain: cluster.x-k8s.io
   group: infrastructure
   kind: BMCCluster
-  path: github.com/pnap/k8s-bmc/api/v1beta1
+  path: github.com/phoenixnap/k8s-bmc/api/v1beta1
   version: v1beta1
 - api:
     crdVersion: v1
@@ -20,7 +20,7 @@ resources:
   domain: cluster.x-k8s.io
   group: infrastructure
   kind: BMCMachine
-  path: github.com/pnap/k8s-bmc/api/v1beta1
+  path: github.com/phoenixnap/k8s-bmc/api/v1beta1
   version: v1beta1
 - api:
     crdVersion: v1
@@ -28,6 +28,6 @@ resources:
   domain: cluster.x-k8s.io
   group: infrastructure
   kind: BMCMachineTemplate
-  path: github.com/pnap/k8s-bmc/api/v1beta1
+  path: github.com/phoenixnap/k8s-bmc/api/v1beta1
   version: v1beta1
 version: "3"

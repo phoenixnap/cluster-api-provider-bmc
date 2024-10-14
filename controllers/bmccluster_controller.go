@@ -40,8 +40,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	bmcv1 "github.com/phoenixnap/cluster-api-provider-bmc/api/v1beta1"
 	"github.com/pkg/errors"
-	bmcv1 "github.com/pnap/cluster-api-provider-bmc/api/v1beta1"
 )
 
 // BMCClusterReconciler reconciles a BMCCluster object
