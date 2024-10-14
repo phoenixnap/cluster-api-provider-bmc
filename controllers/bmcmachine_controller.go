@@ -246,8 +246,6 @@ func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineC
 			log.Info(`Cluster address block is not yet ready`)
 			return noRequeue, nil
 		}
-		var ii = true
-		request.InstallDefaultSSHKeys = &ii
 		request.NetworkConfiguration = NetworkConfiguration{
 			IPBlocksConfiguration: IPBlocksConfiguration{
 				ConfigurationType: `USER_DEFINED`,
@@ -257,7 +255,7 @@ func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineC
 	}
 
 	createBody, err := json.Marshal(request)
-	log.Info("Request object FROM machine controller is   **************" + string(createBody))
+
 	if err != nil {
 		return noRequeue, err
 	}
@@ -413,7 +411,6 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 		case StatusPoweredOn:
 			{
 				mc.SetReady()
-				//mc.SetNodeRef(ctx, r.Client)
 			}
 		case StatusError:
 			mc.SetIrreconcilable(capierrors.CreateMachineError, `unrecoverable error while creating the resource at BMC`)

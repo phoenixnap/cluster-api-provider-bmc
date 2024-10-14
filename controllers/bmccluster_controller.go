@@ -146,7 +146,7 @@ func (r *BMCClusterReconciler) reconcileCreate(ctx context.Context, cc *ClusterC
 	if err != nil {
 		return noRequeue, err
 	}
-	log.Info("Request object FROM cluster controller is   **************" + string(createBody))
+
 	resp, err := cc.BMCClient.Post(fmt.Sprintf("%s/ips/v1/ip-blocks", r.BMCEndpointURL), `application/json`, bytes.NewBuffer(createBody))
 	if err != nil {
 		cc.Event(EventTypeWarning, EventReasonCreateError, err.Error())
@@ -197,7 +197,7 @@ func (r *BMCClusterReconciler) reconcileCreate(ctx context.Context, cc *ClusterC
 
 	cc.Eventf(EventTypeNormal, EventReasonCreated, "Created BMC IP-Block %s", ips.ID)
 	cc.SetStatus(ips)
-	log.Info("set ip allocation id is   **************" + ips.ID)
+
 	cc.SetIPAllocationID(ips.ID)
 
 	// This controller created an IP-block of size two, and the first address is reserved
@@ -205,7 +205,7 @@ func (r *BMCClusterReconciler) reconcileCreate(ctx context.Context, cc *ClusterC
 	// plane machine is created.
 	addr := net.ParseIP(strings.TrimSuffix(ips.CIDR, `/31`))
 	addr[15] = addr[15] + 1
-	log.Info("set ip is   **************" + addr.String())
+
 	cc.SetIP(addr.String())
 
 	// set the control plane endpoint
