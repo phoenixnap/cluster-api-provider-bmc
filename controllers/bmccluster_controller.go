@@ -126,7 +126,7 @@ func (r *BMCClusterReconciler) reconcileLive(ctx context.Context, cc *ClusterCon
 		cc.AddFini()
 	}
 
-	if !cc.IsReady() {
+	if len(cc.GetIP()) == 0 {
 		return r.reconcileCreate(ctx, cc)
 	}
 
@@ -197,6 +197,7 @@ func (r *BMCClusterReconciler) reconcileCreate(ctx context.Context, cc *ClusterC
 
 	cc.Eventf(EventTypeNormal, EventReasonCreated, "Created BMC IP-Block %s", ips.ID)
 	cc.SetStatus(ips)
+
 	cc.SetIPAllocationID(ips.ID)
 
 	// This controller created an IP-block of size two, and the first address is reserved
@@ -204,6 +205,7 @@ func (r *BMCClusterReconciler) reconcileCreate(ctx context.Context, cc *ClusterC
 	// plane machine is created.
 	addr := net.ParseIP(strings.TrimSuffix(ips.CIDR, `/31`))
 	addr[15] = addr[15] + 1
+
 	cc.SetIP(addr.String())
 
 	// set the control plane endpoint

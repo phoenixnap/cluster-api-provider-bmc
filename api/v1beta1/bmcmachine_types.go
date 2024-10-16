@@ -68,12 +68,13 @@ type BMCMachineSpec struct {
 // NetworkType represents the type of networking configuraiton a server should use.
 // Only one of the following network types may be specified.
 // If none of the following network types are specified, the default one is PublicAndPrivate.
-// +kubebuilder:validation:Enum=PUBLIC_AND_PRIVATE;PRIVATE_ONLY
+// +kubebuilder:validation:Enum=PUBLIC_AND_PRIVATE;PRIVATE_ONLY;USER_DEFINED
 type NetworkType string
 
 const (
 	PublicAndPrivate NetworkType = `PUBLIC_AND_PRIVATE`
 	PrivateOnly      NetworkType = `PRIVATE_ONLY`
+	UserDefined      NetworkType = `USER_DEFINED`
 )
 
 // LocationID identifies a BMC region.
@@ -92,12 +93,13 @@ const (
 // ServerOS describes the operating system image for this server.
 // Only one of the following server OSs may be specified.
 // If none of the following OSs are specified, the default one is UbuntuBionic.
-// +kubebuilder:validation:Enum=ubuntu/bionic;ubuntu/focal
+// +kubebuilder:validation:Enum=ubuntu/bionic;ubuntu/focal;ubuntu/jammy
 type ServerOS string
 
 const (
 	UbuntuBionic ServerOS = `ubuntu/bionic`
 	UbuntuFocal  ServerOS = `ubuntu/focal`
+	UbuntuJammy  ServerOS = `ubuntu/jammy`
 )
 
 // ServerType describes the hardware to allocate for this server.
@@ -191,6 +193,9 @@ type BMCMachineStatus struct {
 	Addresses      []corev1.NodeAddress       `json:"addresses,omitempty"`
 	FailureReason  *errors.MachineStatusError `json:"failureReason,omitempty"`
 	FailureMessage *string                    `json:"failureMessage,omitempty"`
+	// NodeRef is a reference to the corresponding workload cluster Node if it exists.
+	// +optional
+	NodeRef *corev1.ObjectReference `json:"nodeRef,omitempty"`
 }
 
 //+kubebuilder:object:root=true
