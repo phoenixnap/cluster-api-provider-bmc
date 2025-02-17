@@ -97,6 +97,7 @@ var (
 	StatusStale          = `stale`
 	StatusPoweredOn      = `powered-on`
 	StatusError          = `error`
+	StatusAssigned       = `assigned`
 )
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -426,6 +427,10 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 	case StatusPoweredOn:
 		{
 			mc.SetNodeRef(ctx, r.Client)
+			if !mc.IsReady() {
+				mc.MergeBMCStatusProperties(ss)
+				mc.SetReady()
+			}
 			return requeueAfter2Min, nil
 		}
 	case StatusError:
