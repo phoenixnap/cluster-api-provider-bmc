@@ -176,7 +176,7 @@ func (mc *MachineContext) GetBMCStatus() string {
 
 func (mc *MachineContext) GetHostname() string {
 	r := strings.NewReplacer(".", "-", "/", "-")
-	return r.Replace(mc.BMCMachine.Name)
+	return r.Replace(mc.Machine.Name)
 }
 
 func (mc MachineContext) IsControlPlaneMachine() bool {
