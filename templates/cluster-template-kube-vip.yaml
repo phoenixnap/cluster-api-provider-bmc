@@ -29,7 +29,7 @@ apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 metadata:
   name: "${CLUSTER_NAME}-control-plane"
 spec:
-  replicas: 1
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
   machineTemplate:
     infrastructureRef:
       kind: BMCMachineTemplate
@@ -74,6 +74,78 @@ spec:
     - service containerd restart
     - service kubelet restart
     - echo "preKubeadmCommands finished"
+    - "echo 'Updating kube-vip config with controlPlaneEndpoint IP...'"
+    - |
+      if [ -f /run/kubeadm/kubeadm.yaml ]; then
+        sed -i "s/PLACEHOLDER/$(grep controlPlaneEndpoint /run/kubeadm/kubeadm.yaml | awk '{print $2}' | tr -d '\"' | cut -d':' -f1)/" /etc/kubernetes/manifests/kube-vip.yaml
+      else
+        sed -i "s/PLACEHOLDER/$(grep apiServerEndpoint /run/kubeadm/kubeadm-join-config.yaml | awk '{print $2}' | tr -d '\"' | cut -d':' -f1)/" /etc/kubernetes/manifests/kube-vip.yaml
+      fi
+    files:
+    - content: |
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: kube-vip
+          namespace: kube-system
+        spec:
+          containers:
+            - args:
+                - manager
+              env:
+                - name: vip_arp
+                  value: "false"
+                - name: port
+                  value: "6443"
+                - name: vip_cidr
+                  value: "32"
+                - name: cp_enable
+                  value: "true"
+                - name: cp_namespace
+                  value: kube-system
+                - name: vip_ddns
+                  value: "false"
+                - name: bgp_enable
+                  value: "true"
+                - name: bgp_routerid
+                  value: 169.254.247.0
+                - name: bgp_as
+                  value: "65401"
+                - name: bgp_peeraddress
+                  value: 169.254.247.0
+                - name: bgp_peerpass
+                  value: "${BGP_PEERPASS}"
+                - name: bgp_peeras
+                  value: "65400"
+                - name: address
+                  value: PLACEHOLDER
+                - name: bgp_multihop
+                  value: "true"
+              image: ghcr.io/kube-vip/kube-vip:v0.8.9
+              imagePullPolicy: Always
+              name: kube-vip
+              resources: {}
+              securityContext:
+                capabilities:
+                  add:
+                    - NET_ADMIN
+                    - NET_RAW
+                    - SYS_TIME
+              volumeMounts:
+                - mountPath: /etc/kubernetes/admin.conf
+                  name: kubeconfig
+          hostAliases:
+          - hostnames:
+            - kubernetes
+            ip: 127.0.0.1
+          hostNetwork: true
+          volumes:
+            - hostPath:
+                path: /etc/kubernetes/admin.conf
+              name: kubeconfig
+        status: {}
+      owner: root:root
+      path: /etc/kubernetes/manifests/kube-vip.yaml
     initConfiguration:
       nodeRegistration:
         name: '{{ ds.meta_data["local_hostname"] }}'
