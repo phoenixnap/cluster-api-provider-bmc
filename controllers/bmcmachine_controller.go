@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	"github.com/phoenixnap/cluster-api-provider-bmc/api/v1beta1"
 	bmcv1 "github.com/phoenixnap/cluster-api-provider-bmc/api/v1beta1"
 	"github.com/pkg/errors"
 )
@@ -97,6 +98,8 @@ var (
 	StatusStale          = `stale`
 	StatusPoweredOn      = `powered-on`
 	StatusError          = `error`
+	StatusAssigned       = `assigned`
+	StatusNotAssigned    = `unassigned`
 )
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -238,7 +241,8 @@ func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineC
 		OSConfiguration:       OSConfiguration{CloudInit: CloudInit{UserData: string(encodedBootstrap)}},
 	}
 
-	if mc.IsControlPlaneMachine() {
+	//do not to assign control plane ip to specific server, if using kube-vip and bgp
+	if mc.IsControlPlaneMachine() && mc.BMCCluster.Spec.VIPManager == v1beta1.NONE {
 		// if its a control plane machine then add the public network configuration
 		// if control plane && ipid == `` then we have a problem
 		ipid := mc.GetClusterIPAllocationID()
@@ -426,6 +430,10 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 	case StatusPoweredOn:
 		{
 			mc.SetNodeRef(ctx, r.Client)
+			if !mc.IsReady() {
+				mc.MergeBMCStatusProperties(ss)
+				mc.SetReady()
+			}
 			return requeueAfter2Min, nil
 		}
 	case StatusError:

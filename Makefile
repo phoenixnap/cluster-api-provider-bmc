@@ -157,6 +157,7 @@ release: clean-release ## Build and push container images using the latest git t
 release-manifests: $(KUSTOMIZE) $(RELEASE_DIR) ## Builds the manifests to publish with a release
 	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml
 	cp templates/cluster-template.yaml $(RELEASE_DIR)/cluster-template.yaml
+	cp templates/cluster-template-kube-vip.yaml $(RELEASE_DIR)/cluster-template-kube-vip.yaml
 	cp clusterctl.yaml $(RELEASE_DIR)/clusterctl.yaml
 	BMC_CAPI_IMG_URL=${BMC_CAPI_IMG_URL} kustomize build config/default | envsubst > $(RELEASE_DIR)/infrastructure-components.yaml
 
