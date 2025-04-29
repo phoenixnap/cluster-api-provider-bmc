@@ -291,6 +291,7 @@ func (cc ClusterContext) IsStatusEqual(s string) bool {
 
 func (cc *ClusterContext) SetControlPlaneEndpoint(host string, port int) {
 	cc.BMCCluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{Host: host, Port: int32(port)}
+	cc.Cluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{Host: host, Port: int32(port)}
 }
 
 func (cc *ClusterContext) SetReady() {

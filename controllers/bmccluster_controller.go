@@ -302,7 +302,14 @@ func (r *BMCClusterReconciler) reconcileSynchronize(ctx context.Context, cc *Clu
 	} else {
 		log.Info(`No change in status`)
 	}
-	if cc.IsStatusEqual(StatusAssigned) && !cc.IsReady() {
+	log.Info("Status is " + string(cc.BMCCluster.Status.BMCStatus) + ", and vip manager is " + string(cc.BMCCluster.Spec.VIPManager) + " from enum: " + string(bmcv1.KUBEVIP) + "," + string(bmcv1.NONE))
+	if cc.IsStatusEqual(StatusAssigned) && cc.BMCCluster.Spec.VIPManager == bmcv1.NONE && !cc.IsReady() {
+		log.Info("infrastructure set to ready, vip manager is none.")
+		cc.SetReady()
+	}
+
+	if cc.IsStatusEqual(StatusNotAssigned) && cc.BMCCluster.Spec.VIPManager == bmcv1.KUBEVIP && !cc.IsReady() {
+		log.Info("infrastructure set to ready, vip manager is kube-vip.")
 		cc.SetReady()
 	}
 	return requeueAfter5Min, nil

@@ -37,6 +37,8 @@ type BMCClusterSpec struct {
 	// control plane.
 	// +optional
 	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint"`
+	// The vip manager for control plane HA. Must be one of NONE or KUBEVIP.
+	VIPManager VIPMANAGER `json:"vipManager"`
 }
 
 // BMCClusterStatus defines the observed state of BMCCluster
@@ -94,6 +96,18 @@ type Tag struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }
+
+// VIPMANAGER identifies a vip manager to be configured for control plane HA.
+// Only one of the following options may be specified.
+// If none of the following options are specified, the default one is kube-vip.
+// When specified as NONE, HA won't be configured for control plane.
+// +kubebuilder:validation:Enum=KUBEVIP;NONE
+type VIPMANAGER string
+
+const (
+	NONE    VIPMANAGER = `NONE`
+	KUBEVIP VIPMANAGER = `KUBEVIP`
+)
 
 func init() {
 	SchemeBuilder.Register(&BMCCluster{}, &BMCClusterList{})

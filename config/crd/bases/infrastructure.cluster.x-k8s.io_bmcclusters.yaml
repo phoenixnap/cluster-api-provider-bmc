@@ -71,8 +71,16 @@ spec:
                 - SGP
                 - NLD
                 type: string
+              vipManager:
+                description: The vip manager for control plane HA. Must be one of
+                  NONE or KUBEVIP.
+                enum:
+                - KUBEVIP
+                - NONE
+                type: string
             required:
             - location
+            - vipManager
             type: object
           status:
             description: BMCClusterStatus defines the observed state of BMCCluster
