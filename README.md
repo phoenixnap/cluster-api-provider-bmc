@@ -48,12 +48,14 @@ You need to have a Bare Metal Cloud account to use this Kubernetes Cluster API.
     export BMC_CONTROL_PLANE_MACHINE_TYPE=s2.c1.medium  # server type of the control plane
     export BMC_LOCATION=PHX                             # location of cluster
     export BMC_NODE_TYPE=s2.c1.medium                   # server types of the node
+    export VIP_MANAGER=KUBEVIP                          # use KUBEVIP value to enable HA of control plane nodes, or NONE otherwise
 
     # Optional variables
     export CNI_VERSION=1.1.1        # version number for Container Network Interface (https://github.com/containernetworking/cni)
     export CONTAINERD_VERSION=1.4.4 # version number for Containerd (https://github.com/containerd/containerd)
     export CRI_VERSION=1.25.0       # version number for Kubernetes Container Runtime Interface (https://github.com/kubernetes-sigs/cri-tools/)
     export RUNC_VERSION=1.1.4       # version number for runc (https://github.com/opencontainers/runc)
+    export BGP_PEERPASS=            # In case KUBEVIP value set for VIP_MANAGER, BGP peer password from BMC portal should be set
 
     # Generate the cluster configuration
     clusterctl generate cluster capi-quickstart \
