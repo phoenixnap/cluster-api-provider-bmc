@@ -52,14 +52,14 @@ You need to have a Bare Metal Cloud account to use this Kubernetes Cluster API.
 
     # Optional variables
     export CNI_VERSION=1.1.1        # version number for Container Network Interface (https://github.com/containernetworking/cni)
-    export CONTAINERD_VERSION=1.4.4 # version number for Containerd (https://github.com/containerd/containerd)
-    export CRI_VERSION=1.25.0       # version number for Kubernetes Container Runtime Interface (https://github.com/kubernetes-sigs/cri-tools/)
-    export RUNC_VERSION=1.1.4       # version number for runc (https://github.com/opencontainers/runc)
+    export CONTAINERD_VERSION=1.7.11 # version number for Containerd (https://github.com/containerd/containerd)
+    export CRI_VERSION=1.31.1       # version number for Kubernetes Container Runtime Interface (https://github.com/kubernetes-sigs/cri-tools/)
+    export RUNC_VERSION=1.1.13       # version number for runc (https://github.com/opencontainers/runc)
     export BGP_PEERPASS=            # In case KUBEVIP value set for VIP_MANAGER, BGP peer password from BMC portal should be set
 
     # Generate the cluster configuration
     clusterctl generate cluster capi-quickstart \
-      --kubernetes-version 1.25.0 \
+      --kubernetes-version v1.29.0 \
       --worker-machine-count=3 \
       > capi-quickstart.yaml
     ```

@@ -36,9 +36,9 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	bmcv1 "github.com/phoenixnap/cluster-api-provider-bmc/api/v1beta1"
 	"github.com/pkg/errors"
@@ -341,20 +341,23 @@ func (r *BMCClusterReconciler) reconcileDelete(ctx context.Context, cc *ClusterC
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *BMCClusterReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	c, err := ctrl.NewControllerManagedBy(mgr).
+	_, err := ctrl.NewControllerManagedBy(mgr).
 		For(&bmcv1.BMCCluster{}).
-		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
+		WithEventFilter(predicates.ResourceNotPaused(mgr.GetScheme(), ctrl.LoggerFrom(ctx))).
+		Watches(&clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(ctx, bmcv1.GroupVersion.WithKind(`BMCCluster`), mgr.GetClient(), &bmcv1.BMCCluster{})),
+			builder.WithPredicates(predicates.ClusterUnpaused(mgr.GetScheme(), ctrl.LoggerFrom(ctx)))).
 		Build(r)
 	if err != nil {
 		return errors.Wrapf(err, `error creating cluster controller`)
 	}
 
-	err = c.Watch(&source.Kind{Type: &clusterv1.Cluster{}},
+	/* err = c.Watch(&clusterv1.Cluster{},
 		handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(ctx, bmcv1.GroupVersion.WithKind(`BMCCluster`), mgr.GetClient(), &bmcv1.BMCCluster{})),
-		predicates.ClusterUnpaused(ctrl.LoggerFrom(ctx)))
+		predicates.ClusterUnpaused(r.Scheme, ctrl.LoggerFrom(ctx)))
 	if err != nil {
 		return errors.Wrapf(err, `err adding watch for unpaused cluster`)
-	}
+	} */
 	return nil
 }
 
