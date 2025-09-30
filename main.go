@@ -45,7 +45,10 @@ import (
 	bmcv1 "github.com/phoenixnap/cluster-api-provider-bmc/api/v1beta1"
 	controllers "github.com/phoenixnap/cluster-api-provider-bmc/controllers"
 
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 var (
@@ -123,6 +126,13 @@ func main() {
 		setupLog.Error(http.ListenAndServe(profilerAddr, nil), `error serving profiler`)
 	}()
 
+	var watchNamespaces map[string]cache.Config
+	if watchNamespace != "" {
+		setupLog.Info("Watching cluster-api objects only in namespace for reconciliation", "namespace", watchNamespace)
+		watchNamespaces = map[string]cache.Config{
+			watchNamespace: {},
+		}
+	}
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
 
@@ -135,12 +145,18 @@ func main() {
 		LeaderElectionNamespace:    leaderElectionNamespace,
 		LeaderElectionResourceLock: resourcelock.LeasesResourceLock,
 
-		MetricsBindAddress:     metricsAddr,
+		Metrics:                metricsserver.Options{BindAddress: ":8080"},
 		HealthProbeBindAddress: probeAddr,
-		Port:                   webhookPort,
+		WebhookServer: webhook.NewServer(
+			webhook.Options{
+				Port: webhookPort,
+			},
+		),
 
-		Namespace:  watchNamespace,
-		SyncPeriod: &syncPeriod,
+		Cache: cache.Options{
+			DefaultNamespaces: watchNamespaces,
+			SyncPeriod:        &syncPeriod,
+		},
 
 		EventBroadcaster: cgrecord.NewBroadcasterWithCorrelatorOptions(
 			cgrecord.CorrelatorOptions{BurstSize: 100}),

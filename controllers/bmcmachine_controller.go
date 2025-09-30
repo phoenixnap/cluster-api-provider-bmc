@@ -38,11 +38,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/phoenixnap/cluster-api-provider-bmc/api/v1beta1"
 	bmcv1 "github.com/phoenixnap/cluster-api-provider-bmc/api/v1beta1"
 	"github.com/pkg/errors"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 )
 
 // BMCMachineReconciler reconciles a BMCMachine object
@@ -547,36 +547,44 @@ type IPBlock struct {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *BMCMachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	c, err := ctrl.NewControllerManagedBy(mgr).
+
+	objFunc, err := util.ClusterToTypedObjectsMapper(r.Client, &bmcv1.BMCMachineList{}, mgr.GetScheme())
+	if err != nil {
+		return errors.Wrapf(err, `Failed to create cluster to object mapper func`)
+	}
+
+	_, err = ctrl.NewControllerManagedBy(mgr).
 		For(&bmcv1.BMCMachine{}).
-		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
-		Watches(&source.Kind{Type: &clusterv1.Machine{}},
+		WithEventFilter(predicates.ResourceNotPaused(mgr.GetScheme(), ctrl.LoggerFrom(ctx))).
+		Watches(&clusterv1.Machine{},
 			handler.EnqueueRequestsFromMapFunc(util.MachineToInfrastructureMapFunc(bmcv1.GroupVersion.WithKind(`BMCMachine`)))).
-		Watches(&source.Kind{Type: &bmcv1.BMCCluster{}},
+		Watches(&bmcv1.BMCCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.BMCClusterToBMCMachines(ctx))).
+		Watches(&clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(objFunc), builder.WithPredicates(predicates.ClusterUnpausedAndInfrastructureReady(mgr.GetScheme(), ctrl.LoggerFrom(ctx)))).
 		Build(r)
 	if err != nil {
 		return errors.Wrapf(err, `Failed to create controller`)
 	}
 
-	objFunc, err := util.ClusterToObjectsMapper(r.Client, &bmcv1.BMCMachineList{}, mgr.GetScheme())
-	if err != nil {
-		return errors.Wrapf(err, `Failed to create cluster to object mapper func`)
-	}
+	//objFunc, err := util.ClusterToTypedObjectsMapper(r.Client, &bmcv1.BMCMachineList{}, mgr.GetScheme())
+	//if err != nil {
+	//	return errors.Wrapf(err, `Failed to create cluster to object mapper func`)
+	//}
 
-	err = c.Watch(&source.Kind{Type: &clusterv1.Cluster{}},
-		handler.EnqueueRequestsFromMapFunc(objFunc),
-		predicates.ClusterUnpausedAndInfrastructureReady(ctrl.LoggerFrom(ctx)))
-	if err != nil {
+	/* err = c.Watch(&source.Kind{Type: &clusterv1.Cluster{}},
+	handler.EnqueueRequestsFromMapFunc(objFunc),
+	predicates.ClusterUnpausedAndInfrastructureReady(r.Scheme(), ctrl.LoggerFrom(ctx))) */
+	/* if err != nil {
 		return errors.Wrapf(err, `Failed to add a watch for unpaused clusters`)
-	}
+	} */
 	return nil
 }
 
 // BMCClusterToBMCMachines adds cluster to machine
 func (r *BMCMachineReconciler) BMCClusterToBMCMachines(ctx context.Context) handler.MapFunc {
 	log := ctrl.LoggerFrom(ctx)
-	return func(o client.Object) []ctrl.Request {
+	return func(ctx context.Context, o client.Object) []ctrl.Request {
 		result := []ctrl.Request{}
 		bmccluster, ok := o.(*bmcv1.BMCCluster)
 		if !ok {
@@ -591,7 +599,7 @@ func (r *BMCMachineReconciler) BMCClusterToBMCMachines(ctx context.Context) hand
 			return result
 		}
 
-		ls := map[string]string{clusterv1.ClusterLabelName: cluster.Name}
+		ls := map[string]string{clusterv1.ClusterNameLabel: cluster.Name}
 		ml := &clusterv1.MachineList{}
 		if err := r.List(ctx, ml, client.InNamespace(bmccluster.Namespace), client.MatchingLabels(ls)); err != nil {
 			log.Error(err, `Unable to get machine list`)

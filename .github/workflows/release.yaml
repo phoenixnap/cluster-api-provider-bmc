@@ -28,7 +28,7 @@ jobs:
       - name: install go
         uses: actions/setup-go@c4a742cab115ed795e34d4513e2cf7d472deb55f # tag=v3.3.1
         with:
-          go-version: '^1.19'
+          go-version: '^1.24'
       - name: generate release artifacts
         env:
             BMC_CAPI_IMG_URL: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -46,7 +46,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       - name: build and push Docker image
-        uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
+        uses: docker/build-push-action@ac9327eae2b366085ac7f6a2d02df8aa8ead720a
         with:
           context: .
           push: true
