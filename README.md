@@ -48,6 +48,7 @@ You need to have a Bare Metal Cloud account to use this Kubernetes Cluster API.
     export BMC_CONTROL_PLANE_MACHINE_TYPE=s2.c1.medium  # server type of the control plane
     export BMC_LOCATION=PHX                             # location of cluster
     export BMC_NODE_TYPE=s2.c1.medium                   # server types of the node
+    export BMC_OS=ubuntu/noble                          # optional: OS image of the servers, ubuntu/noble by default
     export VIP_MANAGER=KUBEVIP                          # use KUBEVIP value to enable HA of control plane nodes, or NONE otherwise
 
     # Optional variables

@@ -298,6 +298,13 @@ func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineC
 	if err := mc.PatchHelper.Patch(ctx, mc.BMCMachine); err != nil {
 		return requeueAfter1Min, errors.Wrap(err, "unable to record the server create request")
 	}
+	// later patches must be computed against what was just saved, or removing the
+	// marker again would not be sent
+	h, err := patch.NewHelper(mc.BMCMachine, mc.K8sClient)
+	if err != nil {
+		return requeueAfter1Min, err
+	}
+	mc.PatchHelper = h
 
 	// Create bmc server
 	code, body, err := callAPI(ctx, mc.BMCClient, http.MethodPost, fmt.Sprintf("%s/bmc/v1/servers", r.BMCEndpointURL), request)

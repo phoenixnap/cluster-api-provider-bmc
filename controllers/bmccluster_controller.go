@@ -106,7 +106,7 @@ func (r *BMCClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Always persist changes to the BMCCluster when the reconcile function returns
 	defer func() {
-		if err := helper.Patch(ctx, cc.BMCCluster); err != nil {
+		if err := cc.PatchHelper.Patch(ctx, cc.BMCCluster); err != nil {
 			log.Error(err, `Unable to patch`)
 		}
 	}()
@@ -172,6 +172,13 @@ func (r *BMCClusterReconciler) reconcileCreate(ctx context.Context, cc *ClusterC
 		if err := cc.PatchHelper.Patch(ctx, cc.BMCCluster); err != nil {
 			return requeueAfter1Min, errors.Wrap(err, "unable to record the IP block create request")
 		}
+		// later patches must be computed against what was just saved, or removing the
+		// marker again would not be sent
+		h, err := patch.NewHelper(cc.BMCCluster, cc.K8sClient)
+		if err != nil {
+			return requeueAfter1Min, err
+		}
+		cc.PatchHelper = h
 
 		code, respBody, err := callAPI(ctx, cc.BMCClient, http.MethodPost, blocksURL, IPBlockRequest{
 			CIDRBlockSize: `/31`,

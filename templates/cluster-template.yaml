@@ -90,7 +90,7 @@ spec:
   template:
     spec:
       location: "${BMC_LOCATION}"
-      os: "ubuntu/jammy"
+      os: "${BMC_OS:=ubuntu/noble}"
       type: "${BMC_CONTROL_PLANE_MACHINE_TYPE}"
       installDefaultSshKeys: true
 ---
@@ -125,7 +125,7 @@ spec:
   template:
     spec:
       location: "${BMC_LOCATION}"
-      os: "ubuntu/jammy"
+      os: "${BMC_OS:=ubuntu/noble}"
       type: "${BMC_NODE_TYPE}"
       installDefaultSshKeys: true
 ---

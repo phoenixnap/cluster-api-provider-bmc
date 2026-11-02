@@ -30,6 +30,9 @@ func TestOfflineClusterLifecycle(t *testing.T) {
 	if api.count("POST", "/ips/v1/ip-blocks") != 1 || bc.Annotations[controllers.ANNOTATION_NAME_BMC_CLUSTER_IP_ALLOCATION_ID] == "" {
 		t.Fatalf("expected one IP block recorded in annotations, have %v", bc.Annotations)
 	}
+	if _, ok := bc.Annotations[controllers.ANNOTATION_NAME_BMC_CREATE_REQUESTED]; ok {
+		t.Error("create_requested_at annotation left after the IP block was recorded")
+	}
 	if !bc.Status.Ready || bc.Spec.ControlPlaneEndpoint.Port != 6443 || net.ParseIP(bc.Spec.ControlPlaneEndpoint.Host) == nil {
 		t.Errorf("cluster not ready or bad endpoint: ready=%v endpoint=%+v", bc.Status.Ready, bc.Spec.ControlPlaneEndpoint)
 	}
@@ -108,6 +111,9 @@ func TestOfflineMachineLifecycle(t *testing.T) {
 	id := bm.Annotations[controllers.ANNOTATION_NAME_BMC_SERVER_ID]
 	if api.count("POST", "/bmc/v1/servers") != 1 || id == "" || bm.Spec.ProviderID == nil || *bm.Spec.ProviderID != "bmc://servers/"+id {
 		t.Fatalf("server not recorded: annotations=%v providerID=%v", bm.Annotations, bm.Spec.ProviderID)
+	}
+	if _, ok := bm.Annotations[controllers.ANNOTATION_NAME_BMC_CREATE_REQUESTED]; ok {
+		t.Error("create_requested_at annotation left after the server was recorded")
 	}
 
 	if _, err := e.reconcile(t, e.machine, "c1-worker-0"); err != nil {
