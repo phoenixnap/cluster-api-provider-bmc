@@ -93,8 +93,14 @@ You need to have a Bare Metal Cloud account to use this Kubernetes Cluster API.
     ```
     # Ex. deploying calico
     kubectl --kubeconfig=./capi-quickstart.kubeconfig \
-      apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.24.1/manifests/calico.yaml
+      apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.3/manifests/calico.yaml
 
+    # BMC servers have public and private interfaces, and Calico's default address
+    # detection can pick a different one on each node, which breaks pod traffic between
+    # them. Use each node's Kubernetes InternalIP instead (or cidr=<private network CIDR>
+    # to keep pod traffic on the private network).
+    kubectl --kubeconfig=./capi-quickstart.kubeconfig -n kube-system \
+      set env daemonset/calico-node IP_AUTODETECTION_METHOD=kubernetes-internal-ip
     ```
 1. Verify nodes are in a `Ready` status.
     ```
