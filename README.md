@@ -48,6 +48,7 @@ You need to have a Bare Metal Cloud account to use this Kubernetes Cluster API.
     export BMC_CONTROL_PLANE_MACHINE_TYPE=s2.c1.medium  # server type of the control plane
     export BMC_LOCATION=PHX                             # location of cluster
     export BMC_NODE_TYPE=s2.c1.medium                   # server types of the node
+    export BMC_OS=ubuntu/noble                          # optional: OS image of the servers, ubuntu/noble by default
     export VIP_MANAGER=KUBEVIP                          # use KUBEVIP value to enable HA of control plane nodes, or NONE otherwise
 
     # Optional variables
@@ -92,8 +93,11 @@ You need to have a Bare Metal Cloud account to use this Kubernetes Cluster API.
     ```
     # Ex. deploying calico
     kubectl --kubeconfig=./capi-quickstart.kubeconfig \
-      apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.24.1/manifests/calico.yaml
+      apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.3/manifests/calico.yaml
 
+    # make every node use the same network (the default can pick public on some nodes and private on others)
+    kubectl --kubeconfig=./capi-quickstart.kubeconfig -n kube-system \
+      set env daemonset/calico-node IP_AUTODETECTION_METHOD=kubernetes-internal-ip
     ```
 1. Verify nodes are in a `Ready` status.
     ```

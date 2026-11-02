@@ -80,7 +80,7 @@ const (
 // LocationID identifies a BMC region.
 // Only one of the following locations may be specified.
 // If none of the following locations are specified, the default one is Phoenix.
-// +kubebuilder:validation:Enum=PHX;ASH;SGP;NLD
+// +kubebuilder:validation:Enum=PHX;ASH;SGP;NLD;CHI;SEA
 type LocationID string
 
 const (
@@ -88,24 +88,26 @@ const (
 	Ashburn   LocationID = `ASH`
 	Singapore LocationID = `SGP`
 	Amsterdam LocationID = `NLD`
+	Chicago   LocationID = `CHI`
+	Seattle   LocationID = `SEA`
 )
 
 // ServerOS describes the operating system image for this server.
 // Only one of the following server OSs may be specified.
 // If none of the following OSs are specified, the default one is UbuntuBionic.
-// +kubebuilder:validation:Enum=ubuntu/bionic;ubuntu/focal;ubuntu/jammy
+// +kubebuilder:validation:Enum=ubuntu/bionic;ubuntu/focal;ubuntu/jammy;ubuntu/noble
 type ServerOS string
 
 const (
 	UbuntuBionic ServerOS = `ubuntu/bionic`
 	UbuntuFocal  ServerOS = `ubuntu/focal`
 	UbuntuJammy  ServerOS = `ubuntu/jammy`
+	UbuntuNoble  ServerOS = `ubuntu/noble`
 )
 
-// ServerType describes the hardware to allocate for this server.
-// Only one of the following server types may be specified.
-// If none of the following types are specified, the default one is S1C1Small.
-// +kubebuilder:validation:Enum=s0.d1.small;s0.d1.medium;s1.c1.small;s1.c1.medium;s1.c2.medium;s1.c2.large;s1.e1.small;s1.e1.medium;s1.e1.large;s2.c1.small;s2.c1.medium;s2.c1.large;s2.c2.small;s2.c2.medium;s2.c2.large;d2.c1.medium;d2.c2.medium;d2.c3.medium;d2.c4.medium;d2.c5.medium;d2.c1.large;d2.c2.large;d2.c3.large;d2.c4.large;d2.c4.storage.pliops1;d2.c5.large;d2.m1.medium;d2.m1.large;d2.m2.medium;d2.m2.large;d2.m2.xlarge;d1.c1.small;d1.c2.small;d1.c3.small;d1.c4.small;d1.c1.medium;d1.c2.medium;d1.c3.medium;d1.c4.medium;d1.c1.large;d1.c2.large;d1.c3.large;d1.c4.large;d1.m1.medium;d1.m2.medium;d1.m3.medium;d1.m4.medium
+// ServerType describes the hardware to allocate for this server, as a BMC product code
+// such as s2.c1.medium. The API checks that it exists in the location.
+// +kubebuilder:validation:Pattern=`^[a-z0-9]+(\.[a-z0-9]+)+$`
 type ServerType string
 
 const (

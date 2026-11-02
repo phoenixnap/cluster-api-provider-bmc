@@ -2,8 +2,8 @@
 
 # Image URL to use all building/pushing image targets
 IMG ?= ${BMC_CAPI_IMG_URL}
-# ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.24.1
+# image tag in the manifests; release-manifests uses the release tag
+export BMC_CAPI_IMG_TAG ?= latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -13,7 +13,6 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
-# This is a requirement for 'setup-envtest.sh' in the test target.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
@@ -69,8 +68,8 @@ modules: ## Runs go mod to ensure proper vendoring.
 ## --------------------------------------
 
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -coverprofile cover.out
+test: manifests generate fmt vet ## Run tests.
+	go test -race ./... -coverprofile cover.out
 
 ## --------------------------------------
 ##@ Build
@@ -159,7 +158,12 @@ release-manifests: $(KUSTOMIZE) $(RELEASE_DIR) ## Builds the manifests to publis
 	cp templates/cluster-template.yaml $(RELEASE_DIR)/cluster-template.yaml
 	cp templates/cluster-template-kube-vip.yaml $(RELEASE_DIR)/cluster-template-kube-vip.yaml
 	cp clusterctl.yaml $(RELEASE_DIR)/clusterctl.yaml
-	BMC_CAPI_IMG_URL=${BMC_CAPI_IMG_URL} kustomize build config/default | envsubst > $(RELEASE_DIR)/infrastructure-components.yaml
+	# leave the credential variables for clusterctl to fill in
+	BMC_CAPI_IMG_URL=${BMC_CAPI_IMG_URL} BMC_CAPI_IMG_TAG=$(RELEASE_TAG) kustomize build config/default | envsubst '$${BMC_CAPI_IMG_URL} $${BMC_CAPI_IMG_TAG}' > $(RELEASE_DIR)/infrastructure-components.yaml
+
+.PHONY: vulncheck
+vulncheck: ## Check dependencies and the standard library for known vulnerabilities.
+	go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
 .PHONY: release-notes
 release-notes: $(RELEASE_NOTES_DIR) $(RELEASE_NOTES)
@@ -177,11 +181,10 @@ $(LOCALBIN):
 ## Tool Binaries
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
-ENVTEST ?= $(LOCALBIN)/setup-envtest
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v3.8.7
-CONTROLLER_TOOLS_VERSION ?= v0.9.0
+CONTROLLER_TOOLS_VERSION ?= v0.17.3
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
@@ -194,7 +197,3 @@ controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessar
 $(CONTROLLER_GEN): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
-.PHONY: envtest
-envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
-$(ENVTEST): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest

@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.9.0
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.17.3
   name: bmcmachines.infrastructure.cluster.x-k8s.io
 spec:
   group: infrastructure.cluster.x-k8s.io
@@ -31,14 +30,19 @@ spec:
         description: BMCMachine is the Schema for the bmcmachines API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -50,9 +54,9 @@ spec:
                 maxLength: 250
                 type: string
               installDefaultSshKeys:
-                description: Whether or not to install SSH Keys marked as default
-                  in additionl to any SSH keys speficied on this resource. Defaults
-                  to true.
+                description: |-
+                  Whether or not to install SSH Keys marked as default in additionl to any SSH keys speficied on this resource.
+                  Defaults to true.
                 type: boolean
               location:
                 description: Location ID where the server is created.
@@ -61,6 +65,8 @@ spec:
                 - ASH
                 - SGP
                 - NLD
+                - CHI
+                - SEA
                 type: string
               networkType:
                 description: The type of networks where this server should be attached.
@@ -75,10 +81,12 @@ spec:
                 - ubuntu/bionic
                 - ubuntu/focal
                 - ubuntu/jammy
+                - ubuntu/noble
                 type: string
               providerID:
-                description: To be set after the BMC server is created. Required by
-                  the cluster API machine controller.
+                description: |-
+                  To be set after the BMC server is created.
+                  Required by the cluster API machine controller.
                 type: string
               sshKeyIds:
                 description: A list of SSH key IDs (BMC resource ID) that will be
@@ -88,57 +96,13 @@ spec:
                 type: array
               type:
                 description: Server type used for creation.
-                enum:
-                - s0.d1.small
-                - s0.d1.medium
-                - s1.c1.small
-                - s1.c1.medium
-                - s1.c2.medium
-                - s1.c2.large
-                - s1.e1.small
-                - s1.e1.medium
-                - s1.e1.large
-                - s2.c1.small
-                - s2.c1.medium
-                - s2.c1.large
-                - s2.c2.small
-                - s2.c2.medium
-                - s2.c2.large
-                - d2.c1.medium
-                - d2.c2.medium
-                - d2.c3.medium
-                - d2.c4.medium
-                - d2.c5.medium
-                - d2.c1.large
-                - d2.c2.large
-                - d2.c3.large
-                - d2.c4.large
-                - d2.c4.storage.pliops1
-                - d2.c5.large
-                - d2.m1.medium
-                - d2.m1.large
-                - d2.m2.medium
-                - d2.m2.large
-                - d2.m2.xlarge
-                - d1.c1.small
-                - d1.c2.small
-                - d1.c3.small
-                - d1.c4.small
-                - d1.c1.medium
-                - d1.c2.medium
-                - d1.c3.medium
-                - d1.c4.medium
-                - d1.c1.large
-                - d1.c2.large
-                - d1.c3.large
-                - d1.c4.large
-                - d1.m1.medium
-                - d1.m2.medium
-                - d1.m3.medium
-                - d1.m4.medium
+                pattern: ^[a-z0-9]+(\.[a-z0-9]+)+$
                 type: string
             required:
             - installDefaultSshKeys
+            - location
+            - os
+            - type
             type: object
           status:
             description: ServerStatus defines the observed state of Server
@@ -189,35 +153,42 @@ spec:
                     description: API version of the referent.
                     type: string
                   fieldPath:
-                    description: 'If referring to a piece of an object instead of
-                      an entire object, this string should contain a valid JSON/Go
-                      field access statement, such as desiredState.manifest.containers[2].
-                      For example, if the object reference is to a container within
-                      a pod, this would take on a value like: "spec.containers{name}"
-                      (where "name" refers to the name of the container that triggered
-                      the event) or if no container name is specified "spec.containers[2]"
-                      (container with index 2 in this pod). This syntax is chosen
-                      only to have some well-defined way of referencing a part of
-                      an object. TODO: this design is not final and this field is
-                      subject to change in the future.'
+                    description: |-
+                      If referring to a piece of an object instead of an entire object, this string
+                      should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
+                      For example, if the object reference is to a container within a pod, this would take on a value like:
+                      "spec.containers{name}" (where "name" refers to the name of the container that triggered
+                      the event) or if no container name is specified "spec.containers[2]" (container with
+                      index 2 in this pod). This syntax is chosen only to have some well-defined way of
+                      referencing a part of an object.
                     type: string
                   kind:
-                    description: 'Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+                    description: |-
+                      Kind of the referent.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
                     type: string
                   name:
-                    description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names'
+                    description: |-
+                      Name of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                     type: string
                   namespace:
-                    description: 'Namespace of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/'
+                    description: |-
+                      Namespace of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
                     type: string
                   resourceVersion:
-                    description: 'Specific resourceVersion to which this reference
-                      is made, if any. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency'
+                    description: |-
+                      Specific resourceVersion to which this reference is made, if any.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
                     type: string
                   uid:
-                    description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
+                    description: |-
+                      UID of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
                     type: string
                 type: object
+                x-kubernetes-map-type: atomic
               privateIpAddresses:
                 items:
                   type: string

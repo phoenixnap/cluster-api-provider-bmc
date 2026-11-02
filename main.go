@@ -47,6 +47,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
@@ -91,9 +92,9 @@ func main() {
 	flag.DurationVar(&leaderElectionLeaseDuration, `leader-election-lease-duration`, 15*time.Second, ``)
 	flag.DurationVar(&leaderElectionRenewDeadline, `leader-election-renew-deadline`, 10*time.Second, ``)
 	flag.DurationVar(&leaderElectionRetryPeriod, `leader-election-retry-period`, 5*time.Second, ``)
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8443", "The address the HTTPS metric endpoint binds to; 0 disables it.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.StringVar(&profilerAddr, `profiler-address`, ``, ``)
+	flag.StringVar(&profilerAddr, `profiler-address`, ``, `The address the pprof endpoint binds to; disabled if empty.`)
 	flag.IntVar(&webhookPort, `webhook-port`, 9443, ``)
 	flag.DurationVar(&reconcileTimeout, `reconcile-timeout`, 90*time.Minute, ``)
 	flag.DurationVar(&syncPeriod, `sync-period`, 10*time.Minute, ``)
@@ -119,12 +120,11 @@ func main() {
 		Scopes:       []string{"bmc", "bmc.read"}}
 
 	// start the profiler
-	if len(profilerAddr) <= 0 {
-		profilerAddr = `:6060`
+	if len(profilerAddr) > 0 {
+		go func() {
+			setupLog.Error(http.ListenAndServe(profilerAddr, nil), `error serving profiler`)
+		}()
 	}
-	go func() {
-		setupLog.Error(http.ListenAndServe(profilerAddr, nil), `error serving profiler`)
-	}()
 
 	var watchNamespaces map[string]cache.Config
 	if watchNamespace != "" {
@@ -145,7 +145,11 @@ func main() {
 		LeaderElectionNamespace:    leaderElectionNamespace,
 		LeaderElectionResourceLock: resourcelock.LeasesResourceLock,
 
-		Metrics:                metricsserver.Options{BindAddress: ":8080"},
+		Metrics: metricsserver.Options{
+			BindAddress:    metricsAddr,
+			SecureServing:  true,
+			FilterProvider: filters.WithAuthenticationAndAuthorization,
+		},
 		HealthProbeBindAddress: probeAddr,
 		WebhookServer: webhook.NewServer(
 			webhook.Options{
