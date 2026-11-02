@@ -10,7 +10,8 @@ generatorOptions:
 images:
   - name: controller
     newName: $BMC_CAPI_IMG_URL
-    newTag: latest
+    # the release sets this to the release tag
+    newTag: $BMC_CAPI_IMG_TAG
 
 configMapGenerator:
 - name: manager-config

@@ -17,12 +17,10 @@ limitations under the License.
 package controllers
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -52,6 +50,8 @@ type BMCMachineReconciler struct {
 	ReconcileTimeout time.Duration
 	BMCClientConfig  clientcredentials.Config
 	BMCEndpointURL   string
+
+	api apiClient
 }
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=bmcmachines,verbs=get;list;watch;create;update;patch;delete
@@ -118,7 +118,7 @@ func (r *BMCMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	log := ctrl.LoggerFrom(ctx)
 
 	// 1. Load the BMC client
-	bmc := r.BMCClientConfig.Client(ctx)
+	bmc := r.api.get(r.BMCClientConfig)
 
 	// 2. get the BMCMachine resource
 	var bmcMachine bmcv1.BMCMachine
@@ -221,6 +221,41 @@ func (r *BMCMachineReconciler) reconcileLive(ctx context.Context, mc *MachineCon
 func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineContext) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 
+	// a permanent create failure is terminal, as for other Cluster API providers
+	if mc.IsStatusEqual(StatusIrreconcilable) {
+		return noRequeue, nil
+	}
+
+	// A previous create may have succeeded without the server ID being recorded (a crash,
+	// timeout, unreadable response or failed patch). Find that server instead of creating
+	// a second one.
+	if requested := createRequestedAt(&mc.BMCMachine.ObjectMeta); !requested.IsZero() {
+		found, err := r.findCreatedServer(ctx, mc, requested)
+		if err != nil {
+			mc.Eventf(EventTypeWarning, EventReasonCreateError, "unable to check for a server created earlier: %v", err)
+			return requeueAfter1Min, err
+		}
+		switch len(found) {
+		case 0:
+			// nothing was created; create below
+		case 1:
+			var ss bmcv1.BMCMachineStatus
+			if err := json.Unmarshal(found[0], &ss); err != nil {
+				return requeueAfter1Min, err
+			}
+			mc.Eventf(EventTypeNormal, EventReasonCreated, "found BMC server %s created earlier", ss.BMCServerID)
+			mc.SetStatus(ss)
+			mc.SetMachineID(ss.BMCServerID)
+			clearCreateRequested(&mc.BMCMachine.ObjectMeta)
+			return requeueAfter1Min, nil
+		default:
+			msg := fmt.Sprintf("%d BMC servers named %s were created; delete the extra servers manually", len(found), mc.GetHostname())
+			mc.Event(EventTypeWarning, EventReasonCreateErrorPermanent, msg)
+			mc.SetIrreconcilable(capierrors.CreateMachineError, msg)
+			return noRequeue, nil
+		}
+	}
+
 	// Retrieve bootstrap data
 	bootstrap, err := mc.GetDataSecretValue(ctx)
 	if err != nil {
@@ -258,83 +293,87 @@ func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineC
 		}
 	}
 
-	createBody, err := json.Marshal(request)
-
-	if err != nil {
-		return noRequeue, err
+	// record the request before making it, so the server can be found if its ID is lost
+	setCreateRequested(&mc.BMCMachine.ObjectMeta, time.Now())
+	if err := mc.PatchHelper.Patch(ctx, mc.BMCMachine); err != nil {
+		return requeueAfter1Min, errors.Wrap(err, "unable to record the server create request")
 	}
 
 	// Create bmc server
-	resp, err := mc.BMCClient.Post(fmt.Sprintf("%s/bmc/v1/servers", r.BMCEndpointURL), `application/json`, bytes.NewBuffer(createBody))
+	code, body, err := callAPI(ctx, mc.BMCClient, http.MethodPost, fmt.Sprintf("%s/bmc/v1/servers", r.BMCEndpointURL), request)
 	if err != nil {
+		// the server may or may not have been created; the next reconcile looks for it
 		mc.Event(EventTypeWarning, EventReasonCreateError, err.Error())
-		return noRequeue, err
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		mc.Event(EventTypeWarning, EventReasonCreateError, err.Error())
-		return noRequeue, err
+		return requeueAfter1Min, err
 	}
 
-	switch resp.StatusCode {
-	case 400, 401, 403:
-		// bad data, or controller/API incompatibility
-		// bad credentials
-		// unauthorized (also 404)
-		// everything fallingthrough into this block should not be requeued
-		log.Info("Unable to reconcile", `code`, resp.StatusCode, `body`, string(body))
+	switch code {
+	case 400, 401, 403, 409:
+		// bad data, controller/API incompatibility, bad credentials, unauthorized or
+		// incompatible state: nothing was created, and retrying would not help
+		log.Info("Unable to reconcile", `code`, code, `body`, string(body))
+		clearCreateRequested(&mc.BMCMachine.ObjectMeta)
 		if !mc.IsStatusEqual(StatusIrreconcilable) {
-			mc.Eventf(EventTypeWarning, EventReasonCreateErrorPermanent, "Code: %v", resp.StatusCode)
-			mc.SetIrreconcilable(capierrors.InvalidConfigurationMachineError, fmt.Sprintf("BMC create code %v", resp.StatusCode))
+			mc.Eventf(EventTypeWarning, EventReasonCreateErrorPermanent, "Code: %v", code)
+			mc.SetIrreconcilable(capierrors.InvalidConfigurationMachineError, fmt.Sprintf("BMC create code %v: %s", code, body))
 		}
 		return noRequeue, nil
 	case 406:
 		// no inventory, backoff and retry
 		log.Info("Temporary no inventory", `code`, 406, `body`, string(body))
-		mc.Eventf(EventTypeWarning, EventReasonCreateErrorInventory, `Code: %v`, resp.StatusCode)
-		return requeueAfter5Min, err
-	case 409:
-		// something is wrong; incompatible state
-		log.Info("Unable to reconcile", `code`, 409, `body`, string(body))
-		if !mc.IsStatusEqual(StatusIrreconcilable) {
-			mc.Eventf(EventTypeWarning, EventReasonCreateErrorPermanent, "Code: %v", resp.StatusCode)
-			mc.SetIrreconcilable(capierrors.InvalidConfigurationMachineError, fmt.Sprintf("BMC create code %v", resp.StatusCode))
-		}
-		return requeueAfter2Min, nil
-	case 500:
-		// temporarily unavailable, backoff and retry
-		log.Info(`BMC temporarily unavailable`, `body`, string(body))
-		mc.Event(EventTypeWarning, EventReasonCreateFailure, `Temporary API failure`)
-		return requeueAfter2Min, err
+		clearCreateRequested(&mc.BMCMachine.ObjectMeta)
+		mc.Eventf(EventTypeWarning, EventReasonCreateErrorInventory, `Code: %v`, code)
+		return requeueAfter5Min, nil
 	case 200, 201, 202, 204:
 		// the call was successful, do nothing and continue reconciliation
 	default:
-		log.Info(`Unexpected response from API`, `statusCode`, resp.StatusCode)
-		mc.Eventf(EventTypeWarning, EventReasonCreateError, `Unexpected response from API: %v`, resp.StatusCode)
-		return noRequeue, fmt.Errorf("Unexpected response during server create: %v", resp.StatusCode)
+		// temporarily unavailable or unexpected; the server may have been created, so the
+		// next reconcile looks for it before creating again
+		log.Info(`Unexpected response from API`, `statusCode`, code, `body`, string(body))
+		mc.Eventf(EventTypeWarning, EventReasonCreateFailure, `Unexpected response from API: %v`, code)
+		return requeueAfter2Min, nil
 	}
 
 	// Set the resulting server ID in the annotation and set status
 	var ss bmcv1.BMCMachineStatus
-	err = json.Unmarshal(body, &ss)
-	if err != nil {
-		mc.Event(EventTypeWarning, EventReasonCreateError, err.Error())
-		return noRequeue, err
+	if err := json.Unmarshal(body, &ss); err != nil || ss.BMCServerID == "" {
+		// created, but the ID is unknown; the next reconcile finds the server by name
+		mc.Eventf(EventTypeWarning, EventReasonCreateError, "unable to read the created server: %v", err)
+		return requeueAfter1Min, nil
 	}
 
-	mc.Eventf(EventTypeNormal, EventReasonCreated, "creatd BMC server %s", ss.BMCServerID)
+	mc.Eventf(EventTypeNormal, EventReasonCreated, "created BMC server %s", ss.BMCServerID)
 	mc.SetStatus(ss)
 	mc.SetMachineID(ss.BMCServerID)
+	clearCreateRequested(&mc.BMCMachine.ObjectMeta)
 	return requeueAfter1Min, nil
+}
+
+// findCreatedServer returns the servers with this machine's hostname and location that
+// were provisioned since the create was requested
+func (r *BMCMachineReconciler) findCreatedServer(ctx context.Context, mc *MachineContext, requested time.Time) ([]json.RawMessage, error) {
+	raw, listed, err := listResources(ctx, mc.BMCClient, fmt.Sprintf("%s/bmc/v1/servers", r.BMCEndpointURL))
+	if err != nil {
+		return nil, err
+	}
+	var found []json.RawMessage
+	for i, s := range listed {
+		if s.Hostname != mc.GetHostname() || s.Location != string(mc.BMCMachine.Spec.Location) {
+			continue
+		}
+		if s.ProvisionedOn != nil && s.ProvisionedOn.Before(requested.Add(-time.Minute)) {
+			continue
+		}
+		found = append(found, raw[i])
+	}
+	return found, nil
 }
 
 // reconcileSynchronize synchronize BMCMachine
 func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *MachineContext) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 
-	resp, err := mc.BMCClient.Get(fmt.Sprintf("%s/bmc/v1/servers/%s", r.BMCEndpointURL, mc.GetMachineID()))
+	code, body, err := callAPI(ctx, mc.BMCClient, http.MethodGet, fmt.Sprintf("%s/bmc/v1/servers/%s", r.BMCEndpointURL, mc.GetMachineID()), nil)
 	if err != nil {
 		if !mc.IsStatusEqual(StatusStale) {
 			mc.Eventf(EventTypeNormal, EventReasonStatusChange, `%v -> %v`, mc.GetBMCStatus(), StatusStale)
@@ -342,57 +381,50 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 		}
 		return requeueAfter2Min, err
 	}
-	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		if !mc.IsStatusEqual(StatusStale) {
-			log.Error(err, string(body))
-			mc.Eventf(EventTypeNormal, EventReasonStatusChange, `%v -> %v`, mc.GetBMCStatus(), StatusStale)
-			mc.SetBMCStatus(StatusStale)
-		}
-		return requeueAfter2Min, err
-	}
-
-	switch resp.StatusCode {
+	switch code {
 	case 400:
 		// bad data, or controller/API incompatibility
 		log.Info("Unable to reconcile, bad request", `code`, 400, `body`, string(body))
 		if !mc.IsStatusEqual(StatusIrreconcilable) {
-			mc.Eventf(EventTypeWarning, EventReasonPollFailure, "Code: %v", resp.StatusCode)
-			mc.SetIrreconcilable(capierrors.InvalidConfigurationMachineError, fmt.Sprintf("BMC read code %v", resp.StatusCode))
+			mc.Eventf(EventTypeWarning, EventReasonPollFailure, "Code: %v", code)
+			mc.SetIrreconcilable(capierrors.InvalidConfigurationMachineError, fmt.Sprintf("BMC read code %v", code))
 		}
 		return requeueAfter5Min, nil
 	case 401:
 		// bad credentials
 		log.Info("Unable to reconcile", `code`, 401, `body`, string(body))
 		if !mc.IsStatusEqual(StatusIrreconcilable) {
-			mc.Eventf(EventTypeWarning, EventReasonPollFailure, "Code: %v", resp.StatusCode)
-			mc.SetIrreconcilable(capierrors.InvalidConfigurationMachineError, fmt.Sprintf("BMC read code %v", resp.StatusCode))
+			mc.Eventf(EventTypeWarning, EventReasonPollFailure, "Code: %v", code)
+			mc.SetIrreconcilable(capierrors.InvalidConfigurationMachineError, fmt.Sprintf("BMC read code %v", code))
 		}
 		return requeueAfter5Min, nil
-	case 403:
-		// unauthorized (also 404)
-		log.Info("Unable to reconcile", `code`, 403, `body`, string(body))
+	case 403, 404:
+		// the server is gone, or the credentials may not read it; only the first is orphaned
+		gone, err := confirmGone(ctx, mc.BMCClient, fmt.Sprintf("%s/bmc/v1/servers", r.BMCEndpointURL), mc.GetMachineID())
+		if err != nil || !gone {
+			log.Info("Unable to read server", `code`, code, `body`, string(body), `listError`, err)
+			if !mc.IsStatusEqual(StatusStale) {
+				mc.Eventf(EventTypeWarning, EventReasonPollFailure, "Access to BMC server %s was denied: %v", mc.GetMachineID(), code)
+				mc.SetBMCStatus(StatusStale)
+			}
+			return requeueAfter5Min, err
+		}
 		if !mc.IsStatusEqual(StatusOrphaned) {
-			mc.Eventf(EventTypeWarning, EventReasonResourceOrphaned, "Access to BMC resource was denied", resp.StatusCode)
+			mc.Eventf(EventTypeWarning, EventReasonResourceOrphaned, "BMC server %s no longer exists", mc.GetMachineID())
 			mc.SetBMCStatus(StatusOrphaned)
 		}
 		return noRequeue, nil
-	case 500:
-		// temporarily unavailable, backoff and retry
-		log.Info(`BMC temporarily unavailable`, `body`, string(body))
-		if !mc.IsStatusEqual(StatusStale) {
-			mc.Eventf(EventTypeWarning, EventReasonPollFailure, "Code: %v", resp.StatusCode)
-			mc.SetBMCStatus(StatusStale)
-		}
-		return requeueAfter5Min, nil
 	case 200, 201, 202, 204:
 		// the call was successful, do nothing and continue synchronizing
 	default:
-		log.Info(`Unexpected response from API`, `statusCode`, resp.StatusCode)
-		mc.Eventf(EventTypeWarning, EventReasonPollFailure, `Unexpected response from API: %v`, resp.StatusCode)
-		return noRequeue, fmt.Errorf("unexpected response during server poll: %v", resp.StatusCode)
+		// temporarily unavailable, backoff and retry
+		log.Info(`Unexpected response from API`, `statusCode`, code, `body`, string(body))
+		if !mc.IsStatusEqual(StatusStale) {
+			mc.Eventf(EventTypeWarning, EventReasonPollFailure, "Code: %v", code)
+			mc.SetBMCStatus(StatusStale)
+		}
+		return requeueAfter5Min, nil
 	}
 
 	// Update the status
@@ -443,65 +475,75 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 	}
 }
 
-// reconcileDelete delete BMCMachine
+// reconcileDelete deprovisions the BMC server. The finalizer is only removed once the
+// server is being deprovisioned or is confirmed gone, so a failure is retried instead of
+// leaving a server running that nothing tracks.
 func (r *BMCMachineReconciler) reconcileDelete(ctx context.Context, mc *MachineContext) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
-
-	// This function makes a best-effort attempt to cleanup the BMC server
-	mc.RemoveFini()
+	serversURL := fmt.Sprintf("%s/bmc/v1/servers", r.BMCEndpointURL)
 
 	bmcServerID := mc.GetMachineID()
-	if !mc.IsStatusEqual(StatusOrphaned) && len(bmcServerID) > 0 {
-		// tear down the BMC server
-		req, err := http.NewRequestWithContext(
-			ctx,
-			http.MethodPost,
-			fmt.Sprintf("%s/bmc/v1/servers/%s/actions/deprovision", r.BMCEndpointURL, bmcServerID),
-			bytes.NewBufferString(`{"deleteIpBlocks":true}`))
+	if len(bmcServerID) == 0 {
+		requested := createRequestedAt(&mc.BMCMachine.ObjectMeta)
+		if requested.IsZero() {
+			// no server was ever requested
+			mc.RemoveFini()
+			return noRequeue, nil
+		}
+		// a server may have been created without its ID being recorded
+		found, err := r.findCreatedServer(ctx, mc, requested)
 		if err != nil {
-			mc.Event(`Warning`, EventReasonCleanupError, err.Error())
-			return noRequeue, err
+			mc.Eventf(EventTypeWarning, EventReasonCleanupError, "unable to check for a server created earlier: %v", err)
+			return requeueAfter1Min, err
 		}
-		req.Header.Add(`Content-Type`, `application/json`)
-		resp, err := mc.BMCClient.Do(req)
-		if err != nil {
-			mc.Event(`Warning`, EventReasonCleanupError, err.Error())
-			return noRequeue, err
+		if len(found) == 0 {
+			mc.RemoveFini()
+			return noRequeue, nil
 		}
-		defer resp.Body.Close()
-
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			mc.Event(`Warning`, EventReasonCleanupError, err.Error())
-			return noRequeue, err
+		var ss bmcv1.BMCMachineStatus
+		if err := json.Unmarshal(found[0], &ss); err != nil {
+			return requeueAfter1Min, err
 		}
-
-		switch resp.StatusCode {
-		case 400, 401:
-			// bad data, or controller/API incompatibility
-			// bad credentials
-			log.Info("Unable to delete", `code`, resp.StatusCode, `body`, string(body))
-			mc.SetBMCStatus(StatusIrreconcilable)
-			return requeueAfter2Min, nil
-		case 403:
-			// unauthorized (also 404)
-			log.Info("Unable to delete", `code`, 403, `body`, string(body))
-			mc.SetBMCStatus(StatusOrphaned)
-			return requeueAfter2Min, nil
-		case 500:
-			// temporarily unavailable, backoff and retry
-			log.Info(`BMC temporarily unavailable`, `body`, string(body))
-			return requeueAfter2Min, nil
-		case 200, 201, 202, 204:
-			// the call was successful, do nothing and continue reconciliation
-			mc.Eventf(`Normal`, EventReasonCleanupSuccess, "Deleted BMC server %s", bmcServerID)
-		default:
-			mc.Eventf(`Warning`, EventReasonCleanupError, "Unexpected response from API: %v", resp.StatusCode)
-			return requeueAfter2Min, fmt.Errorf("Unexpected response during server delete: %v", resp.StatusCode)
-		}
+		bmcServerID = ss.BMCServerID
+		mc.SetMachineID(bmcServerID)
+	}
+	if mc.IsStatusEqual(StatusOrphaned) {
+		// confirmed gone while synchronizing
+		mc.RemoveFini()
+		return noRequeue, nil
 	}
 
-	// At this point the BMC server is either orphaned or has been cleaned up
+	// tear down the BMC server
+	code, body, err := callAPI(ctx, mc.BMCClient, http.MethodPost, fmt.Sprintf("%s/%s/actions/deprovision", serversURL, bmcServerID), map[string]bool{"deleteIpBlocks": true})
+	if err != nil {
+		mc.Event(EventTypeWarning, EventReasonCleanupError, err.Error())
+		return requeueAfter1Min, err
+	}
+
+	switch code {
+	case 200, 201, 202, 204:
+		mc.Eventf(EventTypeNormal, EventReasonCleanupSuccess, "Deleted BMC server %s", bmcServerID)
+	case 403, 404:
+		gone, err := confirmGone(ctx, mc.BMCClient, serversURL, bmcServerID)
+		if err != nil {
+			mc.Eventf(EventTypeWarning, EventReasonCleanupError, "unable to confirm BMC server %s is gone: %v", bmcServerID, err)
+			return requeueAfter2Min, err
+		}
+		if !gone {
+			mc.Eventf(EventTypeWarning, EventReasonCleanupError, "access to BMC server %s was denied and it still exists; not removing the finalizer", bmcServerID)
+			return requeueAfter5Min, nil
+		}
+		mc.Eventf(EventTypeNormal, EventReasonCleanupSuccess, "BMC server %s was already deleted", bmcServerID)
+	default:
+		// bad request, bad credentials, incompatible state (e.g. still provisioning), or
+		// temporarily unavailable: keep the finalizer and retry
+		log.Info("Unable to delete", `code`, code, `body`, string(body))
+		mc.Eventf(EventTypeWarning, EventReasonCleanupError, "deprovisioning BMC server %s failed with %v; retrying", bmcServerID, code)
+		return requeueAfter2Min, nil
+	}
+
+	// At this point the BMC server is being deprovisioned or is gone
+	mc.RemoveFini()
 	return noRequeue, nil
 }
 

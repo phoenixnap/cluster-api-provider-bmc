@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -40,7 +42,32 @@ const (
 	ANNOTATION_NAME_BMC_SERVER_ID                = `bmc.api.phoenixnap.com/server_id`
 	ANNOTATION_NAME_BMC_CLUSTER_IP_ALLOCATION_ID = `bmc.api.phoenixnap.com/cluster_ip_allocation_id`
 	ANNOTATION_NAME_BMC_CLUSTER_IP               = `bmc.api.phoenixnap.com/cluster_ip`
+	// ANNOTATION_NAME_BMC_CREATE_REQUESTED records when a server or IP block was requested,
+	// so that one created without its ID being recorded can be found instead of created again
+	ANNOTATION_NAME_BMC_CREATE_REQUESTED = `bmc.api.phoenixnap.com/create_requested_at`
 )
+
+// setAnnotation sets an annotation, creating the map if the object has none
+func setAnnotation(obj *metav1.ObjectMeta, key, value string) {
+	if obj.Annotations == nil {
+		obj.Annotations = map[string]string{}
+	}
+	obj.Annotations[key] = value
+}
+
+// createRequestedAt returns when a create was last requested, or the zero time
+func createRequestedAt(obj *metav1.ObjectMeta) time.Time {
+	t, _ := time.Parse(time.RFC3339, obj.Annotations[ANNOTATION_NAME_BMC_CREATE_REQUESTED])
+	return t
+}
+
+func setCreateRequested(obj *metav1.ObjectMeta, t time.Time) {
+	setAnnotation(obj, ANNOTATION_NAME_BMC_CREATE_REQUESTED, t.UTC().Format(time.RFC3339))
+}
+
+func clearCreateRequested(obj *metav1.ObjectMeta) {
+	delete(obj.Annotations, ANNOTATION_NAME_BMC_CREATE_REQUESTED)
+}
 
 func (mc *MachineContext) AddFini() {
 	controllerutil.AddFinalizer(mc.BMCMachine, bmcv1.MachineFinalizer)
@@ -69,7 +96,7 @@ func (mc MachineContext) GetMachineID() string {
 func (mc *MachineContext) SetMachineID(id string) {
 	nsid := fmt.Sprintf("bmc://servers/%s", id)
 	mc.BMCMachine.Spec.ProviderID = &nsid
-	mc.BMCMachine.Annotations[ANNOTATION_NAME_BMC_SERVER_ID] = id
+	setAnnotation(&mc.BMCMachine.ObjectMeta, ANNOTATION_NAME_BMC_SERVER_ID, id)
 }
 
 func (mc MachineContext) IsInfrastructureReady() bool {
@@ -203,13 +230,7 @@ func (mc *MachineContext) SetIrreconcilable(err apierrors.MachineStatusError, ms
 
 func (mc *MachineContext) SetReady() {
 	mc.BMCMachine.Status.Ready = true
-	addrs := []corev1.NodeAddress{}
-	for _, a := range mc.BMCMachine.Status.PublicIPAddresses {
-		addrs = append(addrs, corev1.NodeAddress{
-			Type:    corev1.NodeExternalIP,
-			Address: a})
-	}
-	mc.BMCMachine.Status.Addresses = addrs
+	mc.BMCMachine.Status.Addresses = machineAddresses(mc.BMCMachine.Status.PublicIPAddresses, mc.BMCMachine.Status.PrivateIPAddresses)
 }
 
 func (mc *MachineContext) IsReady() bool {
@@ -252,11 +273,11 @@ func (cc ClusterContext) GetIPAllocationID() string {
 }
 
 func (cc *ClusterContext) SetIPAllocationID(id string) {
-	cc.BMCCluster.Annotations[ANNOTATION_NAME_BMC_CLUSTER_IP_ALLOCATION_ID] = id
+	setAnnotation(&cc.BMCCluster.ObjectMeta, ANNOTATION_NAME_BMC_CLUSTER_IP_ALLOCATION_ID, id)
 }
 
 func (cc *ClusterContext) SetIP(ip string) {
-	cc.BMCCluster.Annotations[ANNOTATION_NAME_BMC_CLUSTER_IP] = ip
+	setAnnotation(&cc.BMCCluster.ObjectMeta, ANNOTATION_NAME_BMC_CLUSTER_IP, ip)
 }
 
 func (cc *ClusterContext) GetIP() string {
