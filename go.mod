@@ -2,6 +2,8 @@ module github.com/phoenixnap/cluster-api-provider-bmc
 
 go 1.26.0
 
+toolchain go1.27.3
+
 require (
 	github.com/pkg/errors v0.9.1
 	golang.org/x/oauth2 v0.37.0
