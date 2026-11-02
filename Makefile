@@ -158,7 +158,8 @@ release-manifests: $(KUSTOMIZE) $(RELEASE_DIR) ## Builds the manifests to publis
 	cp templates/cluster-template.yaml $(RELEASE_DIR)/cluster-template.yaml
 	cp templates/cluster-template-kube-vip.yaml $(RELEASE_DIR)/cluster-template-kube-vip.yaml
 	cp clusterctl.yaml $(RELEASE_DIR)/clusterctl.yaml
-	BMC_CAPI_IMG_URL=${BMC_CAPI_IMG_URL} BMC_CAPI_IMG_TAG=$(RELEASE_TAG) kustomize build config/default | envsubst > $(RELEASE_DIR)/infrastructure-components.yaml
+	# substitute only the image; clusterctl fills in the credential variables at install time
+	BMC_CAPI_IMG_URL=${BMC_CAPI_IMG_URL} BMC_CAPI_IMG_TAG=$(RELEASE_TAG) kustomize build config/default | envsubst '$${BMC_CAPI_IMG_URL} $${BMC_CAPI_IMG_TAG}' > $(RELEASE_DIR)/infrastructure-components.yaml
 
 .PHONY: vulncheck
 vulncheck: ## Check dependencies and the standard library for known vulnerabilities.
