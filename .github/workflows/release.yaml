@@ -61,7 +61,6 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          # attach an SBOM and build provenance to the image
           sbom: true
           provenance: mode=max
           tags: ${{ steps.meta.outputs.tags }}

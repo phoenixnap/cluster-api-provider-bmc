@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"net/http"
-	"net/http/pprof"
+	_ "net/http/pprof"
 
 	"golang.org/x/oauth2/clientcredentials"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -92,11 +92,9 @@ func main() {
 	flag.DurationVar(&leaderElectionLeaseDuration, `leader-election-lease-duration`, 15*time.Second, ``)
 	flag.DurationVar(&leaderElectionRenewDeadline, `leader-election-renew-deadline`, 10*time.Second, ``)
 	flag.DurationVar(&leaderElectionRetryPeriod, `leader-election-retry-period`, 5*time.Second, ``)
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8443", "The address the metrics endpoint binds to. "+
-		"It is served over HTTPS and requires a Kubernetes token allowed to get /metrics. Use 0 to disable.")
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8443", "The address the HTTPS metric endpoint binds to; 0 disables it.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.StringVar(&profilerAddr, `profiler-address`, ``, "The address the unauthenticated pprof endpoint binds to, "+
-		"e.g. localhost:6060. Disabled if empty.")
+	flag.StringVar(&profilerAddr, `profiler-address`, ``, `The address the pprof endpoint binds to; disabled if empty.`)
 	flag.IntVar(&webhookPort, `webhook-port`, 9443, ``)
 	flag.DurationVar(&reconcileTimeout, `reconcile-timeout`, 90*time.Minute, ``)
 	flag.DurationVar(&syncPeriod, `sync-period`, 10*time.Minute, ``)
@@ -121,16 +119,10 @@ func main() {
 		TokenURL:     os.Getenv(controllers.ENV_BMC_TOKEN_URL),
 		Scopes:       []string{"bmc", "bmc.read"}}
 
-	// start the profiler, only if asked for: it is unauthenticated
+	// start the profiler
 	if len(profilerAddr) > 0 {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 		go func() {
-			setupLog.Error(http.ListenAndServe(profilerAddr, mux), `error serving profiler`)
+			setupLog.Error(http.ListenAndServe(profilerAddr, nil), `error serving profiler`)
 		}()
 	}
 

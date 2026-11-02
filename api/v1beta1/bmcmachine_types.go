@@ -105,9 +105,8 @@ const (
 	UbuntuNoble  ServerOS = `ubuntu/noble`
 )
 
-// ServerType describes the hardware to allocate for this server, as a product code from
-// the BMC catalog, e.g. s2.c1.medium. The catalog changes over time, so the API checks
-// that the type exists and is available in the location when the server is created.
+// ServerType describes the hardware to allocate for this server, as a BMC product code
+// such as s2.c1.medium. The API checks that it exists in the location.
 // +kubebuilder:validation:Pattern=`^[a-z0-9]+(\.[a-z0-9]+)+$`
 type ServerType string
 

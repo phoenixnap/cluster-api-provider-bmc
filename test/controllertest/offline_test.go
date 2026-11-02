@@ -1,10 +1,5 @@
 package controllertest
 
-// Offline tests: the real reconcilers against a mock PhoenixNAP API. No credentials,
-// no cost; run with
-//
-//	go test ./test/controllertest -run TestOffline -v
-
 import (
 	"net"
 	"testing"
@@ -15,10 +10,9 @@ import (
 	"github.com/phoenixnap/cluster-api-provider-bmc/controllers"
 )
 
-// lastApplied is what client-side `kubectl apply` adds; with it the annotation map is non-nil
+// lastApplied is the annotation client-side `kubectl apply` adds
 var lastApplied = map[string]string{"kubectl.kubernetes.io/last-applied-configuration": "{}"}
 
-// The IP block lifecycle when the BMCCluster already has annotations (client-side apply).
 func TestOfflineClusterLifecycle(t *testing.T) {
 	api := newMockAPI(t)
 	e := newEnv(t, api.URL, api.creds(), testCluster("c1"), testBMCCluster("c1", "PHX", bmcv1.NONE, lastApplied))
@@ -57,10 +51,7 @@ func TestOfflineClusterLifecycle(t *testing.T) {
 	}
 }
 
-// The shipped cluster template creates the BMCCluster without annotations, as do
-// `kubectl create`, server-side apply (Flux, Argo CD) and ClusterClass. Writing the
-// allocation ID into the nil map panics after the IP block was created, and every
-// retry creates another billable block.
+// The shipped template creates the BMCCluster without annotations.
 func TestOfflineClusterCreateWithoutAnnotations(t *testing.T) {
 	api := newMockAPI(t)
 	e := newEnv(t, api.URL, api.creds(), testCluster("c1"), testBMCCluster("c1", "PHX", bmcv1.NONE, nil))
@@ -73,8 +64,7 @@ func TestOfflineClusterCreateWithoutAnnotations(t *testing.T) {
 	}
 }
 
-// Deleting a BMCCluster when the API is unreachable must neither panic nor drop the
-// finalizer, or the IP block is never deleted.
+// Delete must neither panic nor drop the finalizer when the API is unreachable.
 func TestOfflineClusterDeleteAPIUnreachable(t *testing.T) {
 	api := newMockAPI(t)
 	e := newEnv(t, api.URL, api.creds(), testCluster("c1"), testBMCCluster("c1", "PHX", bmcv1.KUBEVIP, lastApplied))
@@ -96,10 +86,9 @@ func machineEnv(t *testing.T, api *mockAPI) *env {
 	m, s := testMachine("c1", "c1-worker-0")
 	return newEnv(t, api.URL, api.creds(), testCluster("c1"),
 		testBMCCluster("c1", "PHX", bmcv1.NONE, map[string]string{controllers.ANNOTATION_NAME_BMC_CLUSTER_IP_ALLOCATION_ID: "block-0", controllers.ANNOTATION_NAME_BMC_CLUSTER_IP: "198.18.0.1"}),
-		m, s, testBMCMachine("c1-worker-0", "PHX", "s0.d1.small", "ubuntu/jammy", nil))
+		m, s, testBMCMachine("c1-worker-0"))
 }
 
-// A worker machine is created once, becomes ready when powered on, and is deprovisioned on delete.
 func TestOfflineMachineLifecycle(t *testing.T) {
 	api := newMockAPI(t)
 	e := machineEnv(t, api)
@@ -136,8 +125,7 @@ func TestOfflineMachineLifecycle(t *testing.T) {
 	}
 }
 
-// If deprovisioning fails, the finalizer must stay so the deletion is retried; otherwise
-// the BMCMachine disappears and the server keeps running.
+// A failed deprovision keeps the finalizer, so it is retried.
 func TestOfflineMachineDeleteDeprovisionFails(t *testing.T) {
 	api := newMockAPI(t)
 	e := machineEnv(t, api)
@@ -153,8 +141,7 @@ func TestOfflineMachineDeleteDeprovisionFails(t *testing.T) {
 	}
 }
 
-// When a server is created but its ID cannot be recorded (here: an unreadable response;
-// equally a crash, timeout or failed patch), the next reconcile must not create a second server.
+// A server created without its ID being recorded is found, not created again.
 func TestOfflineMachineCreateNotRecorded(t *testing.T) {
 	api := newMockAPI(t)
 	api.CreateServerBody = `{"id": 12345}`
@@ -171,7 +158,7 @@ func TestOfflineMachineCreateNotRecorded(t *testing.T) {
 	}
 }
 
-// Server IP blocks are reported as "first - last" ranges; machine addresses must be IPs.
+// The API reports some addresses as "first - last" ranges.
 func TestOfflineMachineAddressRange(t *testing.T) {
 	api := newMockAPI(t)
 	api.PublicIPs = []string{"198.18.1.8 - 198.18.1.15"}

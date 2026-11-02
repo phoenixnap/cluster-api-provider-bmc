@@ -42,12 +42,10 @@ const (
 	ANNOTATION_NAME_BMC_SERVER_ID                = `bmc.api.phoenixnap.com/server_id`
 	ANNOTATION_NAME_BMC_CLUSTER_IP_ALLOCATION_ID = `bmc.api.phoenixnap.com/cluster_ip_allocation_id`
 	ANNOTATION_NAME_BMC_CLUSTER_IP               = `bmc.api.phoenixnap.com/cluster_ip`
-	// ANNOTATION_NAME_BMC_CREATE_REQUESTED records when a server or IP block was requested,
-	// so that one created without its ID being recorded can be found instead of created again
+	// ANNOTATION_NAME_BMC_CREATE_REQUESTED is set while a create's resulting ID is unknown
 	ANNOTATION_NAME_BMC_CREATE_REQUESTED = `bmc.api.phoenixnap.com/create_requested_at`
 )
 
-// setAnnotation sets an annotation, creating the map if the object has none
 func setAnnotation(obj *metav1.ObjectMeta, key, value string) {
 	if obj.Annotations == nil {
 		obj.Annotations = map[string]string{}
@@ -55,7 +53,6 @@ func setAnnotation(obj *metav1.ObjectMeta, key, value string) {
 	obj.Annotations[key] = value
 }
 
-// createRequestedAt returns when a create was last requested, or the zero time
 func createRequestedAt(obj *metav1.ObjectMeta) time.Time {
 	t, _ := time.Parse(time.RFC3339, obj.Annotations[ANNOTATION_NAME_BMC_CREATE_REQUESTED])
 	return t

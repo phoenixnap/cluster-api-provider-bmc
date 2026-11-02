@@ -2,7 +2,7 @@
 
 # Image URL to use all building/pushing image targets
 IMG ?= ${BMC_CAPI_IMG_URL}
-# image tag in the deployment manifests; release-manifests uses the release tag
+# image tag in the manifests; release-manifests uses the release tag
 export BMC_CAPI_IMG_TAG ?= latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -158,7 +158,7 @@ release-manifests: $(KUSTOMIZE) $(RELEASE_DIR) ## Builds the manifests to publis
 	cp templates/cluster-template.yaml $(RELEASE_DIR)/cluster-template.yaml
 	cp templates/cluster-template-kube-vip.yaml $(RELEASE_DIR)/cluster-template-kube-vip.yaml
 	cp clusterctl.yaml $(RELEASE_DIR)/clusterctl.yaml
-	# substitute only the image; clusterctl fills in the credential variables at install time
+	# leave the credential variables for clusterctl to fill in
 	BMC_CAPI_IMG_URL=${BMC_CAPI_IMG_URL} BMC_CAPI_IMG_TAG=$(RELEASE_TAG) kustomize build config/default | envsubst '$${BMC_CAPI_IMG_URL} $${BMC_CAPI_IMG_TAG}' > $(RELEASE_DIR)/infrastructure-components.yaml
 
 .PHONY: vulncheck

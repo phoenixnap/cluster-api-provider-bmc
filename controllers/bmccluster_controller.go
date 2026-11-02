@@ -141,85 +141,84 @@ func ipBlockDescription(cc *ClusterContext) string {
 func (r *BMCClusterReconciler) reconcileCreate(ctx context.Context, cc *ClusterContext) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 	log.Info(`Creating cluster`)
-	blocksURL := fmt.Sprintf("%s/ips/v1/ip-blocks", r.BMCEndpointURL)
 
 	if cc.IsStatusEqual(StatusIrreconcilable) {
 		return noRequeue, nil
 	}
 
-	var body []byte
-	// A previous create may have succeeded without the block ID being recorded. Find that
-	// block instead of creating a second one.
+	// adopt a block from an earlier create whose ID was never recorded
 	if requested := createRequestedAt(&cc.BMCCluster.ObjectMeta); !requested.IsZero() {
 		found, err := r.findCreatedBlock(ctx, cc, requested)
 		if err != nil {
-			cc.Eventf(EventTypeWarning, EventReasonCreateError, "unable to check for an IP block created earlier: %v", err)
 			return requeueAfter1Min, err
 		}
-		if len(found) > 1 {
-			cc.Eventf(EventTypeWarning, EventReasonCreateErrorPermanent, "%d IP blocks were created for this cluster; delete the extra blocks manually", len(found))
+		switch len(found) {
+		case 0:
+		case 1:
+			return r.setIPBlock(ctx, cc, found[0])
+		default:
+			cc.Eventf(EventTypeWarning, EventReasonCreateErrorPermanent, "%d IP blocks were created for this cluster; delete the extras manually", len(found))
 			cc.SetBMCStatus(StatusIrreconcilable)
 			return noRequeue, nil
 		}
-		if len(found) == 1 {
-			body = found[0]
-		}
 	}
 
-	if body == nil {
-		// record the request before making it, so the block can be found if its ID is lost
-		setCreateRequested(&cc.BMCCluster.ObjectMeta, time.Now())
-		if err := cc.PatchHelper.Patch(ctx, cc.BMCCluster); err != nil {
-			return requeueAfter1Min, errors.Wrap(err, "unable to record the IP block create request")
-		}
-		// later patches must be computed against what was just saved, or removing the
-		// marker again would not be sent
-		h, err := patch.NewHelper(cc.BMCCluster, cc.K8sClient)
-		if err != nil {
-			return requeueAfter1Min, err
-		}
-		cc.PatchHelper = h
-
-		code, respBody, err := callAPI(ctx, cc.BMCClient, http.MethodPost, blocksURL, IPBlockRequest{
-			CIDRBlockSize: `/31`,
-			Location:      string(cc.BMCCluster.Spec.Location),
-			Description:   ipBlockDescription(cc),
-		})
-		if err != nil {
-			cc.Event(EventTypeWarning, EventReasonCreateError, err.Error())
-			return requeueAfter1Min, err
-		}
-
-		switch code {
-		case 400, 401, 403:
-			// bad data, or controller/API incompatibility
-			// bad credentials
-			// unauthorized (also 404)
-			// everything fallingthrough into this block should not be requeued
-			log.Info(`Unable to reconcile`, `code`, code, `body`, string(respBody))
-			clearCreateRequested(&cc.BMCCluster.ObjectMeta)
-			if !cc.IsStatusEqual(StatusIrreconcilable) {
-				cc.Eventf(EventTypeWarning, EventReasonCreateErrorPermanent, "Code: %v", code)
-				cc.SetBMCStatus(StatusIrreconcilable)
-			}
-			return noRequeue, nil
-		case 200, 201, 202, 204:
-			// the call was successful, do nothing and continue reconciliation
-			log.Info(`ip-block successfully created`)
-			body = respBody
-		default:
-			// temporarily unavailable or unexpected; the block may have been created, so the
-			// next reconcile looks for it before creating again
-			log.Info(`Unexpected response from API`, `code`, code, `body`, string(respBody))
-			cc.Eventf(EventTypeWarning, EventReasonCreateFailure, "Unexpected response from the API: %v", code)
-			return requeueAfter2Min, nil
-		}
+	// save the marker before creating, so the block can be found if its ID is lost
+	setCreateRequested(&cc.BMCCluster.ObjectMeta, time.Now())
+	if err := cc.PatchHelper.Patch(ctx, cc.BMCCluster); err != nil {
+		return requeueAfter1Min, err
 	}
+	// diff later patches against the saved object, so clearing the marker is sent
+	h, err := patch.NewHelper(cc.BMCCluster, cc.K8sClient)
+	if err != nil {
+		return requeueAfter1Min, err
+	}
+	cc.PatchHelper = h
+
+	code, body, err := callAPI(ctx, cc.BMCClient, http.MethodPost, fmt.Sprintf("%s/ips/v1/ip-blocks", r.BMCEndpointURL), IPBlockRequest{
+		CIDRBlockSize: `/31`,
+		Location:      string(cc.BMCCluster.Spec.Location),
+		Description:   ipBlockDescription(cc),
+	})
+	if err != nil {
+		cc.Event(EventTypeWarning, EventReasonCreateError, err.Error())
+		return requeueAfter1Min, err
+	}
+
+	switch code {
+	case 400, 401, 403:
+		// bad data, or controller/API incompatibility
+		// bad credentials
+		// unauthorized (also 404)
+		// everything fallingthrough into this block should not be requeued
+		log.Info(`Unable to reconcile`, `code`, code, `body`, string(body))
+		clearCreateRequested(&cc.BMCCluster.ObjectMeta)
+		if !cc.IsStatusEqual(StatusIrreconcilable) {
+			cc.Eventf(EventTypeWarning, EventReasonCreateErrorPermanent, "Code: %v", code)
+			cc.SetBMCStatus(StatusIrreconcilable)
+		}
+		return noRequeue, nil
+	case 200, 201, 202, 204:
+		// the call was successful, do nothing and continue reconciliation
+		log.Info(`ip-block successfully created`)
+	default:
+		// the block may still have been created; the next reconcile looks for it
+		log.Info(`Unexpected response from API`, `code`, code, `body`, string(body))
+		cc.Eventf(EventTypeWarning, EventReasonCreateFailure, "Unexpected response from the API: %v", code)
+		return requeueAfter2Min, nil
+	}
+
+	return r.setIPBlock(ctx, cc, body)
+}
+
+// setIPBlock records the IP block and makes its second address the control plane endpoint
+func (r *BMCClusterReconciler) setIPBlock(ctx context.Context, cc *ClusterContext, body []byte) (ctrl.Result, error) {
+	log := ctrl.LoggerFrom(ctx)
 
 	// Set the resulting IP Block response in the status and set annotation values appropriately.
 	var ips bmcv1.BMCClusterStatus
 	if err := json.Unmarshal(body, &ips); err != nil || ips.ID == "" {
-		cc.Eventf(EventTypeWarning, EventReasonCreateError, "unable to read the created IP block: %v", err)
+		cc.Eventf(EventTypeWarning, EventReasonCreateError, "unable to read the IP block: %v", err)
 		return requeueAfter1Min, nil
 	}
 
@@ -228,8 +227,7 @@ func (r *BMCClusterReconciler) reconcileCreate(ctx context.Context, cc *ClusterC
 	// plane machine is created.
 	prefix, err := netip.ParsePrefix(ips.CIDR)
 	if err != nil || !prefix.Addr().Is4() {
-		cc.Eventf(EventTypeWarning, EventReasonCreateError, "IP block %s has unusable CIDR %q", ips.ID, ips.CIDR)
-		return requeueAfter5Min, fmt.Errorf("IP block %s has unusable CIDR %q: %v", ips.ID, ips.CIDR, err)
+		return requeueAfter5Min, fmt.Errorf("IP block %s has unusable CIDR %q", ips.ID, ips.CIDR)
 	}
 	addr := prefix.Masked().Addr().Next()
 
@@ -299,7 +297,6 @@ func (r *BMCClusterReconciler) reconcileSynchronize(ctx context.Context, cc *Clu
 		}
 		return requeueAfter5Min, nil
 	case 403, 404:
-		// the block is gone, or the credentials may not read it; only the first is orphaned
 		gone, err := confirmGone(ctx, cc.BMCClient, fmt.Sprintf("%s/ips/v1/ip-blocks", r.BMCEndpointURL), cc.GetIPAllocationID())
 		if err != nil || !gone {
 			log.Info(`Unable to read IP block`, `code`, code, `body`, string(body), `listError`, err)
@@ -358,8 +355,7 @@ func (r *BMCClusterReconciler) reconcileSynchronize(ctx context.Context, cc *Clu
 	return requeueAfter5Min, nil
 }
 
-// reconcileDelete deletes the cluster's IP block. The finalizer is only removed once the
-// block is deleted or confirmed gone, so a failure is retried instead of leaking it.
+// reconcileDelete deletes the cluster's IP block, keeping the finalizer until it is gone
 func (r *BMCClusterReconciler) reconcileDelete(ctx context.Context, cc *ClusterContext) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 	log.Info(`Reconciling delete BMCCluster`)
@@ -369,14 +365,11 @@ func (r *BMCClusterReconciler) reconcileDelete(ctx context.Context, cc *ClusterC
 	if id == "" {
 		requested := createRequestedAt(&cc.BMCCluster.ObjectMeta)
 		if requested.IsZero() {
-			// no block was ever requested
 			cc.RemoveFini()
 			return noRequeue, nil
 		}
-		// a block may have been created without its ID being recorded
 		found, err := r.findCreatedBlock(ctx, cc, requested)
 		if err != nil {
-			cc.Eventf(EventTypeWarning, EventReasonCleanupError, "unable to check for an IP block created earlier: %v", err)
 			return requeueAfter1Min, err
 		}
 		if len(found) == 0 {
@@ -402,7 +395,7 @@ func (r *BMCClusterReconciler) reconcileDelete(ctx context.Context, cc *ClusterC
 			return requeueAfter2Min, err
 		}
 		if !isGone {
-			cc.Eventf(EventTypeWarning, EventReasonCleanupError, "access to BMC IP block %s was denied and it still exists; not removing the finalizer", id)
+			cc.Eventf(EventTypeWarning, EventReasonCleanupError, "access to BMC IP block %s was denied and it still exists", id)
 			return requeueAfter5Min, nil
 		}
 		return gone()
@@ -427,7 +420,7 @@ func (r *BMCClusterReconciler) reconcileDelete(ctx context.Context, cc *ClusterC
 		return requeueAfter2Min, err
 	}
 	if block.BMCStatus != StatusNotAssigned {
-		// still assigned to the control plane server, which releases it when deprovisioned
+		// the control plane server releases it when deprovisioned
 		log.Info(`Waiting for the IP block to be released`, `id`, id, `status`, block.BMCStatus)
 		return requeueAfter1Min, nil
 	}

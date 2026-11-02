@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
 
-# actions are pinned to commit SHAs; the comment gives the release
 jobs:
   test:
     name: test

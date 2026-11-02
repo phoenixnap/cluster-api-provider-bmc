@@ -1,8 +1,7 @@
 package controllertest
 
-// Fixtures and a mock PhoenixNAP API shared by the offline tests (offline_test.go)
-// and the production tests (prod_e2e_test.go). The reconcilers are called directly
-// with a fake Kubernetes client, so no cluster or envtest binaries are needed.
+// The tests call the reconcilers directly, with a fake Kubernetes client and a mock
+// PhoenixNAP API.
 
 import (
 	"context"
@@ -44,7 +43,6 @@ func testScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-// env is a fake management cluster plus the reconcilers, pointed at a PhoenixNAP API
 type env struct {
 	client  client.Client
 	cluster *controllers.BMCClusterReconciler
@@ -69,8 +67,7 @@ func newEnv(t *testing.T, endpointURL string, creds clientcredentials.Config, ob
 	}
 }
 
-// reconcile calls the reconciler, turning a panic into a recorded failure the way
-// controller-runtime's RecoverPanic does, so a test can count what happens across retries
+// reconcile records a panic instead of failing, as controller-runtime recovers them
 func (e *env) reconcile(t *testing.T, r interface {
 	Reconcile(context.Context, ctrl.Request) (ctrl.Result, error)
 }, name string) (res ctrl.Result, err error) {
@@ -104,15 +101,12 @@ func (e *env) getBMCMachine(t *testing.T, name string) (*bmcv1.BMCMachine, bool)
 	return &bm, err == nil
 }
 
-// delete marks an object for deletion; it stays until its finalizers are removed
 func (e *env) delete(t *testing.T, obj client.Object) {
 	t.Helper()
 	if err := e.client.Delete(context.Background(), obj); err != nil {
 		t.Fatal(err)
 	}
 }
-
-// fixtures
 
 func testCluster(name string) *clusterv1.Cluster {
 	return &clusterv1.Cluster{
@@ -124,8 +118,7 @@ func testCluster(name string) *clusterv1.Cluster {
 	}
 }
 
-// testBMCCluster returns a BMCCluster owned by the Cluster of the same name. annotations
-// may be nil, which is what the shipped cluster template produces.
+// testBMCCluster returns a BMCCluster owned by the Cluster of the same name
 func testBMCCluster(name, location string, vip bmcv1.VIPMANAGER, annotations map[string]string) *bmcv1.BMCCluster {
 	return &bmcv1.BMCCluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -136,7 +129,6 @@ func testBMCCluster(name, location string, vip bmcv1.VIPMANAGER, annotations map
 	}
 }
 
-// testMachine returns a worker Machine of the cluster with a bootstrap secret
 func testMachine(cluster, name string) (*clusterv1.Machine, *corev1.Secret) {
 	secretName := name + "-bootstrap"
 	m := &clusterv1.Machine{
@@ -150,7 +142,6 @@ func testMachine(cluster, name string) (*clusterv1.Machine, *corev1.Secret) {
 			InfrastructureRef: corev1.ObjectReference{APIVersion: bmcv1.GroupVersion.String(), Kind: "BMCMachine", Namespace: testNamespace, Name: name},
 		},
 	}
-	// a harmless cloud-init document: the server boots and does nothing else
 	s := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: secretName},
 		Data:       map[string][]byte{"value": []byte("#cloud-config\n{}\n")},
@@ -158,27 +149,24 @@ func testMachine(cluster, name string) (*clusterv1.Machine, *corev1.Secret) {
 	return m, s
 }
 
-func testBMCMachine(name, location, serverType, os string, annotations map[string]string) *bmcv1.BMCMachine {
+func testBMCMachine(name string) *bmcv1.BMCMachine {
 	no := false
-	if annotations == nil {
-		// infrastructure machines are cloned from a template, which always sets annotations
-		annotations = map[string]string{"cluster.x-k8s.io/cloned-from-name": "template"}
-	}
+	// machines cloned from a template always have annotations
+	annotations := map[string]string{"cluster.x-k8s.io/cloned-from-name": "template"}
 	return &bmcv1.BMCMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: testNamespace, Name: name, Annotations: annotations,
 			OwnerReferences: []metav1.OwnerReference{{APIVersion: clusterv1.GroupVersion.String(), Kind: "Machine", Name: name, UID: types.UID(name + "-uid")}},
 		},
 		Spec: bmcv1.BMCMachineSpec{
-			OS: bmcv1.ServerOS(os), Type: bmcv1.ServerType(serverType), Location: bmcv1.LocationID(location),
+			OS: bmcv1.UbuntuNoble, Type: "s0.d1.small", Location: bmcv1.Phoenix,
 			InstallDefaultSSHKeys: &no, NetworkType: bmcv1.PublicAndPrivate,
 			Description: "cluster-api-provider-bmc test machine",
 		},
 	}
 }
 
-// mockAPI is an in-memory PhoenixNAP API covering the calls the controllers make. Unknown
-// IDs get 403, as in production.
+// mockAPI is an in-memory PhoenixNAP API. Like the real one, it answers 403 for unknown IDs.
 type mockAPI struct {
 	*httptest.Server
 	mu      sync.Mutex
@@ -187,21 +175,13 @@ type mockAPI struct {
 	servers map[string]map[string]interface{}
 	next    int
 
-	// DeprovisionStatus is returned by the deprovision action (default 202)
 	DeprovisionStatus int
-	// CreateServerBody, if set, is returned by server create instead of the server
-	CreateServerBody string
-	// PublicIPs are the public addresses reported for created servers
-	PublicIPs []string
-	// ServerStatus is the status reported when a server is read (default powered-on)
-	ServerStatus string
-	// CreateBlockBody, if set, is returned by IP block create instead of the block
-	CreateBlockBody string
-	// Revoked makes every API call fail with 403, as with revoked credentials
-	Revoked bool
+	CreateServerBody  string // replaces the created server in the response, if set
+	PublicIPs         []string
+	CreateBlockBody   string // replaces the created IP block in the response, if set
+	Revoked           bool   // every call fails with 403
 }
 
-// SetBlockStatus changes the status of every IP block
 func (m *mockAPI) SetBlockStatus(status string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -210,7 +190,7 @@ func (m *mockAPI) SetBlockStatus(status string) {
 	}
 }
 
-// set runs f with the mock locked, to change its settings while it serves requests
+// set changes the mock's settings while it serves requests
 func (m *mockAPI) set(f func()) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -219,18 +199,16 @@ func (m *mockAPI) set(f func()) {
 
 func newMockAPI(t *testing.T) *mockAPI {
 	m := &mockAPI{blocks: map[string]map[string]interface{}{}, servers: map[string]map[string]interface{}{},
-		DeprovisionStatus: http.StatusAccepted, PublicIPs: []string{"198.18.1.5"}, ServerStatus: controllers.StatusPoweredOn}
+		DeprovisionStatus: http.StatusAccepted, PublicIPs: []string{"198.18.1.5"}}
 	m.Server = httptest.NewServer(http.HandlerFunc(m.handle))
 	t.Cleanup(m.Close)
 	return m
 }
 
-// creds returns client credentials whose token endpoint is the mock
 func (m *mockAPI) creds() clientcredentials.Config {
 	return clientcredentials.Config{ClientID: "id", ClientSecret: "secret", TokenURL: m.URL + "/token", Scopes: []string{"bmc", "bmc.read"}}
 }
 
-// count returns how many calls matched the method and path prefix
 func (m *mockAPI) count(method, pathPrefix string) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -330,7 +308,7 @@ func (m *mockAPI) handle(w http.ResponseWriter, r *http.Request) {
 			writeJSONResponse(w, http.StatusForbidden, forbidden)
 			return
 		}
-		s["status"] = m.ServerStatus
+		s["status"] = controllers.StatusPoweredOn
 		writeJSONResponse(w, http.StatusOK, s)
 
 	case len(parts) == 6 && parts[2] == "servers" && parts[5] == "deprovision":

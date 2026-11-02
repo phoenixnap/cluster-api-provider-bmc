@@ -221,35 +221,29 @@ func (r *BMCMachineReconciler) reconcileLive(ctx context.Context, mc *MachineCon
 func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineContext) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 
-	// a permanent create failure is terminal, as for other Cluster API providers
 	if mc.IsStatusEqual(StatusIrreconcilable) {
 		return noRequeue, nil
 	}
 
-	// A previous create may have succeeded without the server ID being recorded (a crash,
-	// timeout, unreadable response or failed patch). Find that server instead of creating
-	// a second one.
+	// adopt a server from an earlier create whose ID was never recorded
 	if requested := createRequestedAt(&mc.BMCMachine.ObjectMeta); !requested.IsZero() {
 		found, err := r.findCreatedServer(ctx, mc, requested)
 		if err != nil {
-			mc.Eventf(EventTypeWarning, EventReasonCreateError, "unable to check for a server created earlier: %v", err)
 			return requeueAfter1Min, err
 		}
 		switch len(found) {
 		case 0:
-			// nothing was created; create below
 		case 1:
 			var ss bmcv1.BMCMachineStatus
 			if err := json.Unmarshal(found[0], &ss); err != nil {
 				return requeueAfter1Min, err
 			}
-			mc.Eventf(EventTypeNormal, EventReasonCreated, "found BMC server %s created earlier", ss.BMCServerID)
 			mc.SetStatus(ss)
 			mc.SetMachineID(ss.BMCServerID)
 			clearCreateRequested(&mc.BMCMachine.ObjectMeta)
 			return requeueAfter1Min, nil
 		default:
-			msg := fmt.Sprintf("%d BMC servers named %s were created; delete the extra servers manually", len(found), mc.GetHostname())
+			msg := fmt.Sprintf("%d BMC servers named %s were created; delete the extras manually", len(found), mc.GetHostname())
 			mc.Event(EventTypeWarning, EventReasonCreateErrorPermanent, msg)
 			mc.SetIrreconcilable(capierrors.CreateMachineError, msg)
 			return noRequeue, nil
@@ -293,13 +287,12 @@ func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineC
 		}
 	}
 
-	// record the request before making it, so the server can be found if its ID is lost
+	// save the marker before creating, so the server can be found if its ID is lost
 	setCreateRequested(&mc.BMCMachine.ObjectMeta, time.Now())
 	if err := mc.PatchHelper.Patch(ctx, mc.BMCMachine); err != nil {
-		return requeueAfter1Min, errors.Wrap(err, "unable to record the server create request")
+		return requeueAfter1Min, err
 	}
-	// later patches must be computed against what was just saved, or removing the
-	// marker again would not be sent
+	// diff later patches against the saved object, so clearing the marker is sent
 	h, err := patch.NewHelper(mc.BMCMachine, mc.K8sClient)
 	if err != nil {
 		return requeueAfter1Min, err
@@ -309,15 +302,13 @@ func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineC
 	// Create bmc server
 	code, body, err := callAPI(ctx, mc.BMCClient, http.MethodPost, fmt.Sprintf("%s/bmc/v1/servers", r.BMCEndpointURL), request)
 	if err != nil {
-		// the server may or may not have been created; the next reconcile looks for it
 		mc.Event(EventTypeWarning, EventReasonCreateError, err.Error())
 		return requeueAfter1Min, err
 	}
 
 	switch code {
 	case 400, 401, 403, 409:
-		// bad data, controller/API incompatibility, bad credentials, unauthorized or
-		// incompatible state: nothing was created, and retrying would not help
+		// rejected: nothing was created, and retrying won't help
 		log.Info("Unable to reconcile", `code`, code, `body`, string(body))
 		clearCreateRequested(&mc.BMCMachine.ObjectMeta)
 		if !mc.IsStatusEqual(StatusIrreconcilable) {
@@ -334,8 +325,7 @@ func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineC
 	case 200, 201, 202, 204:
 		// the call was successful, do nothing and continue reconciliation
 	default:
-		// temporarily unavailable or unexpected; the server may have been created, so the
-		// next reconcile looks for it before creating again
+		// the server may still have been created; the next reconcile looks for it
 		log.Info(`Unexpected response from API`, `statusCode`, code, `body`, string(body))
 		mc.Eventf(EventTypeWarning, EventReasonCreateFailure, `Unexpected response from API: %v`, code)
 		return requeueAfter2Min, nil
@@ -344,7 +334,6 @@ func (r *BMCMachineReconciler) reconcileCreate(ctx context.Context, mc *MachineC
 	// Set the resulting server ID in the annotation and set status
 	var ss bmcv1.BMCMachineStatus
 	if err := json.Unmarshal(body, &ss); err != nil || ss.BMCServerID == "" {
-		// created, but the ID is unknown; the next reconcile finds the server by name
 		mc.Eventf(EventTypeWarning, EventReasonCreateError, "unable to read the created server: %v", err)
 		return requeueAfter1Min, nil
 	}
@@ -407,7 +396,6 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 		}
 		return requeueAfter5Min, nil
 	case 403, 404:
-		// the server is gone, or the credentials may not read it; only the first is orphaned
 		gone, err := confirmGone(ctx, mc.BMCClient, fmt.Sprintf("%s/bmc/v1/servers", r.BMCEndpointURL), mc.GetMachineID())
 		if err != nil || !gone {
 			log.Info("Unable to read server", `code`, code, `body`, string(body), `listError`, err)
@@ -482,9 +470,8 @@ func (r *BMCMachineReconciler) reconcileSynchronize(ctx context.Context, mc *Mac
 	}
 }
 
-// reconcileDelete deprovisions the BMC server. The finalizer is only removed once the
-// server is being deprovisioned or is confirmed gone, so a failure is retried instead of
-// leaving a server running that nothing tracks.
+// reconcileDelete deprovisions the BMC server, keeping the finalizer until that is accepted
+// or the server is confirmed gone
 func (r *BMCMachineReconciler) reconcileDelete(ctx context.Context, mc *MachineContext) (ctrl.Result, error) {
 	log := ctrl.LoggerFrom(ctx)
 	serversURL := fmt.Sprintf("%s/bmc/v1/servers", r.BMCEndpointURL)
@@ -493,14 +480,11 @@ func (r *BMCMachineReconciler) reconcileDelete(ctx context.Context, mc *MachineC
 	if len(bmcServerID) == 0 {
 		requested := createRequestedAt(&mc.BMCMachine.ObjectMeta)
 		if requested.IsZero() {
-			// no server was ever requested
 			mc.RemoveFini()
 			return noRequeue, nil
 		}
-		// a server may have been created without its ID being recorded
 		found, err := r.findCreatedServer(ctx, mc, requested)
 		if err != nil {
-			mc.Eventf(EventTypeWarning, EventReasonCleanupError, "unable to check for a server created earlier: %v", err)
 			return requeueAfter1Min, err
 		}
 		if len(found) == 0 {
@@ -515,7 +499,6 @@ func (r *BMCMachineReconciler) reconcileDelete(ctx context.Context, mc *MachineC
 		mc.SetMachineID(bmcServerID)
 	}
 	if mc.IsStatusEqual(StatusOrphaned) {
-		// confirmed gone while synchronizing
 		mc.RemoveFini()
 		return noRequeue, nil
 	}
@@ -537,13 +520,11 @@ func (r *BMCMachineReconciler) reconcileDelete(ctx context.Context, mc *MachineC
 			return requeueAfter2Min, err
 		}
 		if !gone {
-			mc.Eventf(EventTypeWarning, EventReasonCleanupError, "access to BMC server %s was denied and it still exists; not removing the finalizer", bmcServerID)
+			mc.Eventf(EventTypeWarning, EventReasonCleanupError, "access to BMC server %s was denied and it still exists", bmcServerID)
 			return requeueAfter5Min, nil
 		}
-		mc.Eventf(EventTypeNormal, EventReasonCleanupSuccess, "BMC server %s was already deleted", bmcServerID)
 	default:
-		// bad request, bad credentials, incompatible state (e.g. still provisioning), or
-		// temporarily unavailable: keep the finalizer and retry
+		// e.g. 409 while the server is still provisioning
 		log.Info("Unable to delete", `code`, code, `body`, string(body))
 		mc.Eventf(EventTypeWarning, EventReasonCleanupError, "deprovisioning BMC server %s failed with %v; retrying", bmcServerID, code)
 		return requeueAfter2Min, nil
